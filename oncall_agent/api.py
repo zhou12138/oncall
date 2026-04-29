@@ -40,6 +40,31 @@ app = FastAPI(title="OnCall Agent", version="0.1.0")
 orchestrator = OncallOrchestrator()
 
 
+# ── Auth middleware ──────────────────────────────────────────────────────────
+# Endpoints listed in _AUTH_EXEMPT skip the X-API-Key check. /webhooks/icm has
+# its own HMAC scheme so it is also exempt.
+_AUTH_EXEMPT: set[str] = {"/health", "/docs", "/openapi.json", "/redoc", "/webhooks/icm"}
+
+
+@app.middleware("http")
+async def _api_key_middleware(request, call_next):
+    expected = config.api_key
+    if not expected:
+        # Auth disabled — pass through (preserves backward compatibility
+        # for installations that haven't configured a key yet).
+        return await call_next(request)
+    path = request.url.path
+    if path in _AUTH_EXEMPT:
+        return await call_next(request)
+    presented = request.headers.get("x-api-key") or request.headers.get("X-API-Key")
+    if not presented or presented != expected:
+        from starlette.responses import JSONResponse
+        return JSONResponse(
+            {"detail": "missing or invalid X-API-Key"}, status_code=401
+        )
+    return await call_next(request)
+
+
 # ── In-memory run store ──────────────────────────────────────────────────────
 # Maps run_id → {"status", "trace": dict, "result": dict | None, "error": str | None}.
 # Process-local; Phase 2 may swap this for a durable store.
