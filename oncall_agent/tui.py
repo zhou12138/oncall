@@ -166,7 +166,7 @@ async def run_oncall_workflow(session: ChatSession, args: str):
 
     # Run pipeline with live spinner
     try:
-        mode = "mock" if not session.orchestrator._mcp_available else "mcp"
+        mode = session.orchestrator.provider.mode
         mode_label = "mock data" if mode == "mock" else "MCP connectors"
         console.print(f"[bold cyan]🔍 Running 3-step pipeline ({mode_label})...[/bold cyan]\n")
 
