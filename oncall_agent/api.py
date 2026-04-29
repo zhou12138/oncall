@@ -17,7 +17,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
-from oncall_agent.orchestrator import OncallOrchestrator
+from oncall_agent.orchestrator import OncallOrchestrator, get_incident, list_incidents
 from oncall_agent.copilot_proxy import get_proxy
 from oncall_agent.memory.store import OncallMemory
 from oncall_agent.workspace import WorkspaceManager
@@ -269,7 +269,12 @@ _VALID_ACTIONS = {"ack", "escalate"}
 
 @app.post("/actions/{run_id}/{action}")
 async def post_action(run_id: str, action: str):
-    """Record an Adaptive Card action (ack/escalate) against a run."""
+    """Record an Adaptive Card action (ack/escalate) against a run.
+
+    For ``ack`` we drive the Incident state machine to ``acknowledged``;
+    for ``escalate`` we drive it to ``escalated``. State transition errors
+    surface as 409 Conflict so the caller can see the current status.
+    """
     if action not in _VALID_ACTIONS:
         raise HTTPException(
             status_code=400,
@@ -280,11 +285,44 @@ async def post_action(run_id: str, action: str):
         raise HTTPException(status_code=404, detail=f"unknown run_id: {run_id}")
     actions_log = entry.setdefault("actions_log", [])
     actions_log.append({"action": action})
+
+    incident = get_incident(run_id)
+    new_status = "acknowledged" if action == "ack" else "escalated"
+    transition_error: Optional[str] = None
+    if incident is not None:
+        try:
+            incident.transition(new_status, by=f"action:{action}")
+        except ValueError as e:
+            transition_error = str(e)
+
     if action == "ack":
         entry["acknowledged"] = True
     elif action == "escalate":
         entry["escalated"] = True
-    return {"run_id": run_id, "action": action, "status": "recorded"}
+
+    if transition_error:
+        raise HTTPException(status_code=409, detail=transition_error)
+    return {
+        "run_id": run_id,
+        "action": action,
+        "status": "recorded",
+        "incident_status": incident.status if incident else None,
+    }
+
+
+@app.get("/incidents")
+async def get_incidents():
+    """List all incidents tracked by the orchestrator."""
+    return {"incidents": [inc.to_dict() for inc in list_incidents()]}
+
+
+@app.get("/incidents/{run_id}")
+async def get_incident_endpoint(run_id: str):
+    """Return a single incident by run_id."""
+    inc = get_incident(run_id)
+    if inc is None:
+        raise HTTPException(status_code=404, detail=f"unknown run_id: {run_id}")
+    return inc.to_dict()
 
 
 @app.get("/memory")

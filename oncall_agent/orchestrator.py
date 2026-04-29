@@ -6,6 +6,8 @@ Supports two modes:
 """
 
 from oncall_agent.memory.store import OncallMemory
+from oncall_agent.models.incident import Incident
+from oncall_agent.routing import route_incident
 from oncall_agent.config import config
 from oncall_agent.copilot_proxy import get_proxy
 from oncall_agent.errors import (
@@ -30,6 +32,19 @@ from oncall_agent.trace import (
 )
 
 logger = get_logger(__name__)
+
+
+# Module-level incident registry. run_id → Incident. The HTTP API reads this
+# to expose /incidents and to drive state transitions from action callbacks.
+_incidents: dict[str, Incident] = {}
+
+
+def get_incident(run_id: str) -> Incident | None:
+    return _incidents.get(run_id)
+
+
+def list_incidents() -> list[Incident]:
+    return list(_incidents.values())
 
 
 class OncallOrchestrator:
@@ -93,6 +108,21 @@ class OncallOrchestrator:
             trace.mark_completed()
             result["run_id"] = rid
             result["trace"] = trace.to_dict()
+            # Register the incident so the API can list/transition it.
+            owner = route_incident(signal_name)
+            incident = Incident(
+                run_id=rid,
+                signal_name=signal_name,
+                severity=str(result.get("severity", "unknown")),
+                owner=owner,
+            )
+            try:
+                incident.transition("triaged", by="orchestrator")
+            except ValueError:
+                pass
+            _incidents[rid] = incident
+            result["owner"] = owner
+            result["incident"] = incident.to_dict()
             logger.info(
                 "run.completed",
                 extra={
