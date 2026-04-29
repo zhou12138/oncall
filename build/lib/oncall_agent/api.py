@@ -49,6 +49,8 @@ class TriggerResponse(BaseModel):
     actions: list[str]
     steps: dict
     raw_reasoning: str
+    run_id: str = ""
+    trace: dict = {}
 
 
 # ── Intent Extraction ────────────────────────────────────────────────────────
@@ -183,6 +185,8 @@ async def trigger_oncall(req: TriggerRequest):
             actions=result.get("actions", []),
             steps=result.get("steps", {}),
             raw_reasoning=result.get("steps", {}).get("analysis", {}).get("reasoning", ""),
+            run_id=result.get("run_id", ""),
+            trace=result.get("trace", {}),
         )
 
     except ValueError as e:

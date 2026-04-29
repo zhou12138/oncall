@@ -22,6 +22,12 @@ from oncall_agent.logging_config import (
     now_ms,
     run_id_scope,
 )
+from oncall_agent.trace import (
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_SKIPPED,
+    RunTrace,
+)
 
 logger = get_logger(__name__)
 
@@ -47,6 +53,7 @@ class OncallOrchestrator:
     ) -> dict:
         """Execute the pipeline. Uses mock data if MCP unavailable."""
         rid = run_id or new_run_id()
+        trace = RunTrace(run_id=rid, signal_name=signal_name)
         with run_id_scope(rid):
             run_started = now_ms()
             mode = "mcp" if self._mcp_available else "mock"
@@ -62,13 +69,16 @@ class OncallOrchestrator:
             try:
                 if self._mcp_available:
                     result = await self._run_with_mcp(
-                        signal_name, repo, teams_channel, model, intent, raw_query
+                        signal_name, repo, teams_channel, model, intent, raw_query,
+                        trace=trace,
                     )
                 else:
                     result = await self._run_with_mock(
-                        signal_name, repo, teams_channel, model, intent, raw_query
+                        signal_name, repo, teams_channel, model, intent, raw_query,
+                        trace=trace,
                     )
             except Exception as e:
+                trace.mark_failed(f"{type(e).__name__}: {e}")
                 logger.error(
                     "run.failed",
                     extra={
@@ -80,7 +90,9 @@ class OncallOrchestrator:
                     },
                 )
                 raise
+            trace.mark_completed()
             result["run_id"] = rid
+            result["trace"] = trace.to_dict()
             logger.info(
                 "run.completed",
                 extra={
@@ -99,32 +111,49 @@ class OncallOrchestrator:
         signal_name: str,
         coro_factory,
         wrap_error: type[OncallError],
+        trace: RunTrace | None = None,
+        result_summary_fn=None,
     ):
         """Run a single step coroutine with logging + error wrapping.
 
         ``coro_factory`` is a zero-arg callable returning an awaitable, so we
         avoid creating the coroutine before logging step.started.
+        ``result_summary_fn`` (optional) takes the step result and returns a
+        short string written to the StepTrace.result_summary field.
         """
+        step = trace.start_step(step_name) if trace is not None else None
         log_step_event(logger, "started", step_name=step_name, signal_name=signal_name)
         t0 = now_ms()
         try:
             result = await coro_factory()
         except (OncallError, ValueError) as e:
+            err = f"{type(e).__name__}: {e}"
+            if step is not None:
+                step.mark_failed(err)
             log_step_event(
                 logger, "failed",
                 step_name=step_name, signal_name=signal_name,
-                duration_ms=now_ms() - t0,
-                error=f"{type(e).__name__}: {e}",
+                duration_ms=now_ms() - t0, error=err,
             )
             raise
         except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+            if step is not None:
+                step.mark_failed(err)
             log_step_event(
                 logger, "failed",
                 step_name=step_name, signal_name=signal_name,
-                duration_ms=now_ms() - t0,
-                error=f"{type(e).__name__}: {e}",
+                duration_ms=now_ms() - t0, error=err,
             )
             raise wrap_error(f"{step_name} failed: {e}") from e
+        summary = None
+        if result_summary_fn is not None:
+            try:
+                summary = result_summary_fn(result)
+            except Exception:
+                summary = None
+        if step is not None:
+            step.mark_completed(result_summary=summary)
         log_step_event(
             logger, "completed",
             step_name=step_name, signal_name=signal_name,
@@ -140,6 +169,7 @@ class OncallOrchestrator:
         model: str = None,
         intent: dict = None,
         raw_query: str = "",
+        trace: RunTrace | None = None,
     ) -> dict:
         """3-step pipeline with mock data + LLM reasoning."""
         from oncall_agent.connectors.mock import mock_triage, mock_wow
@@ -156,7 +186,11 @@ class OncallOrchestrator:
         async def _triage():
             return mock_triage(signal_name)
 
-        triage = await self._run_step("triage", signal_name, _triage, TriageError)
+        triage = await self._run_step(
+            "triage", signal_name, _triage, TriageError,
+            trace=trace,
+            result_summary_fn=lambda r: f"verdict={r.get('verdict')}",
+        )
         result["steps"]["triage"] = triage
         details = triage["details"]
         logger.info(
@@ -173,7 +207,11 @@ class OncallOrchestrator:
         async def _wow():
             return mock_wow(signal_name, repo)
 
-        wow = await self._run_step("wow", signal_name, _wow, WoWError)
+        wow = await self._run_step(
+            "wow", signal_name, _wow, WoWError,
+            trace=trace,
+            result_summary_fn=lambda r: f"{r.get('trend')} {r.get('change_percent')}%",
+        )
         result["steps"]["wow"] = wow
         logger.info(
             "wow.detail",
@@ -193,7 +231,11 @@ class OncallOrchestrator:
                 model=model, extra_context=extra_context,
             )
 
-        analysis = await self._run_step("reason", signal_name, _reason, ReasoningError)
+        analysis = await self._run_step(
+            "reason", signal_name, _reason, ReasoningError,
+            trace=trace,
+            result_summary_fn=lambda r: f"severity={r.get('severity')}",
+        )
         result["steps"]["analysis"] = analysis
         logger.info(
             "reason.detail",
@@ -221,6 +263,7 @@ class OncallOrchestrator:
         model: str = None,
         intent: dict = None,
         raw_query: str = "",
+        trace: RunTrace | None = None,
     ) -> dict:
         """Full pipeline with MCP connectors."""
         from oncall_agent.mcp_clients.client import MCPClient
@@ -249,6 +292,8 @@ class OncallOrchestrator:
                 "triage", signal_name,
                 lambda: step_triage(adx_client, signal_name),
                 TriageError,
+                trace=trace,
+                result_summary_fn=lambda r: f"verdict={r.get('verdict')}",
             )
             result["steps"]["triage"] = triage
             logger.info(
@@ -261,6 +306,8 @@ class OncallOrchestrator:
             result["steps"]["triage"] = {
                 "verdict": "Skipped", "details": {}, "signal_name": signal_name,
             }
+            if trace is not None:
+                trace.start_step("triage").mark_skipped("intent.should_run_triage=false")
             logger.info(
                 "step.skipped",
                 extra={"event": "step.skipped",
@@ -273,6 +320,8 @@ class OncallOrchestrator:
                 "wow", signal_name,
                 lambda: step_wow_compare(adx_client, github_client, signal_name, repo),
                 WoWError,
+                trace=trace,
+                result_summary_fn=lambda r: f"{r.get('trend')} {r.get('change_percent')}%",
             )
             result["steps"]["wow"] = wow
             logger.info(
@@ -287,6 +336,8 @@ class OncallOrchestrator:
                 "current_count": 0, "previous_count": 0, "delta": 0,
                 "change_percent": 0, "trend": "skipped", "recent_changes": [],
             }
+            if trace is not None:
+                trace.start_step("wow").mark_skipped("intent.should_run_wow=false")
             logger.info(
                 "step.skipped",
                 extra={"event": "step.skipped",
@@ -304,6 +355,8 @@ class OncallOrchestrator:
                 model=model, extra_context=extra_context,
             ),
             ReasoningError,
+            trace=trace,
+            result_summary_fn=lambda r: f"severity={r.get('severity')} teams_sent={r.get('teams_sent', False)}",
         )
         result["steps"]["analysis"] = analysis
         logger.info(
