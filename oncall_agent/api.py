@@ -14,11 +14,12 @@ import uuid
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from oncall_agent.orchestrator import OncallOrchestrator, get_incident, list_incidents
 from oncall_agent.copilot_proxy import get_proxy
+from oncall_agent.ingestion import parse_icm_payload, verify_icm_signature
 from oncall_agent.memory.store import OncallMemory
 from oncall_agent.workspace import WorkspaceManager
 from oncall_agent.config import config
@@ -323,6 +324,70 @@ async def get_incident_endpoint(run_id: str):
     if inc is None:
         raise HTTPException(status_code=404, detail=f"unknown run_id: {run_id}")
     return inc.to_dict()
+
+
+# ── ICM / Geneva webhook ingestion ──────────────────────────────────────────
+
+
+@app.post("/webhooks/icm", status_code=202)
+async def webhooks_icm(
+    request: Request,
+    x_icm_signature: Optional[str] = Header(default=None, alias="X-ICM-Signature"),
+):
+    """Accept an ICM webhook payload and dispatch the pipeline asynchronously.
+
+    HMAC-SHA256 signature verification runs against ``X-ICM-Signature`` and
+    ``config.icm_webhook_secret``. If a secret is configured, requests
+    without a valid signature are rejected with 401.
+    """
+    raw = await request.body()
+    secret = config.icm_webhook_secret
+    if secret:
+        if not x_icm_signature or not verify_icm_signature(raw, x_icm_signature, secret):
+            raise HTTPException(status_code=401, detail="invalid ICM signature")
+
+    try:
+        payload = json.loads(raw.decode("utf-8")) if raw else {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise HTTPException(status_code=400, detail=f"invalid JSON: {e}")
+
+    try:
+        normalized = parse_icm_payload(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    query_lines = [
+        f"ICM Incident {normalized['incident_id']}".strip(),
+        f"Title: {normalized['title']}",
+        f"Severity: {normalized['severity']}",
+    ]
+    if normalized["owning_team"]:
+        query_lines.append(f"OwningTeam: {normalized['owning_team']}")
+    if normalized["impacted_services"]:
+        query_lines.append(
+            f"ImpactedServices: {', '.join(normalized['impacted_services'])}"
+        )
+    if normalized["description"]:
+        query_lines.append(f"Description: {normalized['description']}")
+    query = "\n".join(query_lines)
+
+    req = TriggerRequest(query=query, workspace="", model="")
+    run_id = new_run_id()
+    _record_run(
+        run_id,
+        status="accepted",
+        trace={},
+        result=None,
+        error=None,
+        icm=normalized,
+    )
+    asyncio.create_task(_run_pipeline(run_id, req))
+    return {
+        "run_id": run_id,
+        "status": "accepted",
+        "incident_id": normalized["incident_id"],
+        "poll_url": f"/runs/{run_id}",
+    }
 
 
 @app.get("/memory")

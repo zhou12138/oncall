@@ -117,6 +117,10 @@ class Config(BaseModel):
     default_teams_channel: str = _get(["teams", "default_channel"], "TEAMS_CHANNEL", "")
     default_repo: str = _get(["github", "default_repo"], "GITHUB_REPO", "")
 
+    # Auth / ingestion
+    api_key: str = _get(["server", "api_key"], "ONCALL_API_KEY", "")
+    icm_webhook_secret: str = _get(["server", "icm_webhook_secret"], "ICM_WEBHOOK_SECRET", "")
+
     def validate(self) -> None:
         """Verify required fields are present. Raises ConfigError if not."""
         missing: list[str] = []
