@@ -1,16 +1,25 @@
 """Configuration for OnCall Agent.
 
 Priority: ~/.oncall/config.json > environment variables > defaults
+
+Note: for the LLM API key, the file config stores the *name* of the env var
+that holds the actual secret (under ``llm._token_env``). _get resolves that
+indirection in a single pass so file > env > default ordering is consistent
+with every other field.
 """
 
 import json
 import os
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional
 
 CONFIG_PATH = Path.home() / ".oncall" / "config.json"
 ENV_PATH = Path.home() / ".oncall" / ".env"
+
+
+class ConfigError(Exception):
+    """Raised when required configuration is missing or invalid."""
 
 
 def _load_file_config() -> dict:
@@ -37,8 +46,13 @@ _file_cfg = _load_file_config()
 
 
 def _get(file_path: list[str], env_key: str, default: str) -> str:
-    """Resolve config value: file > env > default."""
-    # Walk file config dict
+    """Resolve config value with strict file > env > default priority.
+
+    The file value may be a literal, or — for indirection-style fields —
+    a dict carrying ``_token_env`` whose value names an env var that holds
+    the real secret. In that case we always resolve via env (file simply
+    declares which env var to read).
+    """
     val = _file_cfg
     for key in file_path:
         if isinstance(val, dict):
@@ -46,8 +60,17 @@ def _get(file_path: list[str], env_key: str, default: str) -> str:
         else:
             val = None
             break
-    if val is not None and not isinstance(val, dict):
+
+    # Indirection: file pointed at an env var name
+    if isinstance(val, dict):
+        token_env = val.get("_token_env")
+        if isinstance(token_env, str) and token_env:
+            return os.getenv(token_env, os.getenv(env_key, default))
+        return os.getenv(env_key, default)
+
+    if val is not None:
         return str(val)
+
     return os.getenv(env_key, default)
 
 
@@ -64,7 +87,9 @@ class Config(BaseModel):
 
     # LLM — GitHub Copilot (OpenAI-compatible)
     llm_api_base: str = _get(["llm", "api_base"], "LLM_API_BASE", "https://api.githubcopilot.com")
-    llm_api_key: str = _get(["llm", "_token_env"], "GITHUB_TOKEN", "")  # resolved from .env
+    # llm_api_key: file may declare {"_token_env": "GITHUB_TOKEN"} or a literal;
+    # _get handles both via the same file > env > default chain.
+    llm_api_key: str = _get(["llm"], "GITHUB_TOKEN", "")
     llm_model: str = _get(["llm", "model"], "LLM_MODEL", "gpt-4o")
     llm_temperature: float = float(_get(["llm", "temperature"], "LLM_TEMPERATURE", "0.3"))
 
@@ -92,12 +117,15 @@ class Config(BaseModel):
     default_teams_channel: str = _get(["teams", "default_channel"], "TEAMS_CHANNEL", "")
     default_repo: str = _get(["github", "default_repo"], "GITHUB_REPO", "")
 
-
-# Fix: resolve api_key from the env var name stored in config
-def _resolve_api_key() -> str:
-    token_env = _file_cfg.get("llm", {}).get("_token_env", "GITHUB_TOKEN")
-    return os.getenv(token_env, "")
+    def validate(self) -> None:
+        """Verify required fields are present. Raises ConfigError if not."""
+        missing: list[str] = []
+        if not self.llm_api_key:
+            missing.append("llm_api_key")
+        if missing:
+            raise ConfigError(
+                f"missing required config field(s): {', '.join(missing)}"
+            )
 
 
 config = Config()
-config.llm_api_key = _resolve_api_key()
