@@ -22,6 +22,10 @@ from oncall_agent.errors import (
     TriageError,
     WoWError,
 )
+from oncall_agent.logging_config import configure_logging, get_logger
+
+configure_logging()
+logger = get_logger(__name__)
 
 app = FastAPI(title="OnCall Agent", version="0.1.0")
 orchestrator = OncallOrchestrator()

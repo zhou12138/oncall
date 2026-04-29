@@ -8,6 +8,9 @@ import json
 from oncall_agent.memory.store import OncallMemory
 from oncall_agent.config import config
 from oncall_agent.copilot_proxy import get_proxy
+from oncall_agent.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 SYSTEM_PROMPT = """You are an OnCall analysis agent for a software engineering team.
 
@@ -150,7 +153,14 @@ async def step_reason_and_act(
             })
             teams_sent = True
         except Exception as e:
-            print(f"Teams notification failed: {e}")
+            logger.warning(
+                "teams.notification_failed",
+                extra={
+                    "event": "teams.notification_failed",
+                    "channel": teams_channel,
+                    "error": f"{type(e).__name__}: {e}",
+                },
+            )
 
     return {
         "reasoning": analysis.get("reasoning", ""),

@@ -15,6 +15,15 @@ from oncall_agent.errors import (
     TriageError,
     WoWError,
 )
+from oncall_agent.logging_config import (
+    get_logger,
+    log_step_event,
+    new_run_id,
+    now_ms,
+    run_id_scope,
+)
+
+logger = get_logger(__name__)
 
 
 class OncallOrchestrator:
@@ -34,16 +43,94 @@ class OncallOrchestrator:
         model: str = None,
         intent: dict = None,
         raw_query: str = "",
+        run_id: str | None = None,
     ) -> dict:
         """Execute the pipeline. Uses mock data if MCP unavailable."""
-        if self._mcp_available:
-            return await self._run_with_mcp(
-                signal_name, repo, teams_channel, model, intent, raw_query
+        rid = run_id or new_run_id()
+        with run_id_scope(rid):
+            run_started = now_ms()
+            mode = "mcp" if self._mcp_available else "mock"
+            logger.info(
+                "run.started",
+                extra={
+                    "event": "run.started",
+                    "run_id": rid,
+                    "signal_name": signal_name,
+                    "mode": mode,
+                },
             )
-        else:
-            return await self._run_with_mock(
-                signal_name, repo, teams_channel, model, intent, raw_query
+            try:
+                if self._mcp_available:
+                    result = await self._run_with_mcp(
+                        signal_name, repo, teams_channel, model, intent, raw_query
+                    )
+                else:
+                    result = await self._run_with_mock(
+                        signal_name, repo, teams_channel, model, intent, raw_query
+                    )
+            except Exception as e:
+                logger.error(
+                    "run.failed",
+                    extra={
+                        "event": "run.failed",
+                        "run_id": rid,
+                        "signal_name": signal_name,
+                        "duration_ms": round(now_ms() - run_started, 3),
+                        "error": f"{type(e).__name__}: {e}",
+                    },
+                )
+                raise
+            result["run_id"] = rid
+            logger.info(
+                "run.completed",
+                extra={
+                    "event": "run.completed",
+                    "run_id": rid,
+                    "signal_name": signal_name,
+                    "duration_ms": round(now_ms() - run_started, 3),
+                    "severity": result.get("severity"),
+                },
             )
+            return result
+
+    async def _run_step(
+        self,
+        step_name: str,
+        signal_name: str,
+        coro_factory,
+        wrap_error: type[OncallError],
+    ):
+        """Run a single step coroutine with logging + error wrapping.
+
+        ``coro_factory`` is a zero-arg callable returning an awaitable, so we
+        avoid creating the coroutine before logging step.started.
+        """
+        log_step_event(logger, "started", step_name=step_name, signal_name=signal_name)
+        t0 = now_ms()
+        try:
+            result = await coro_factory()
+        except (OncallError, ValueError) as e:
+            log_step_event(
+                logger, "failed",
+                step_name=step_name, signal_name=signal_name,
+                duration_ms=now_ms() - t0,
+                error=f"{type(e).__name__}: {e}",
+            )
+            raise
+        except Exception as e:
+            log_step_event(
+                logger, "failed",
+                step_name=step_name, signal_name=signal_name,
+                duration_ms=now_ms() - t0,
+                error=f"{type(e).__name__}: {e}",
+            )
+            raise wrap_error(f"{step_name} failed: {e}") from e
+        log_step_event(
+            logger, "completed",
+            step_name=step_name, signal_name=signal_name,
+            duration_ms=now_ms() - t0, status="ok",
+        )
+        return result
 
     async def _run_with_mock(
         self,
@@ -65,39 +152,57 @@ class OncallOrchestrator:
         if raw_query:
             extra_context += f"\n\n## Original Incident Metadata\n{raw_query}"
 
-        # Step 1: Triage (mock)
-        print(f"[Step 1] Triage: {signal_name}")
-        triage = mock_triage(signal_name)
+        # Step 1: Triage (mock) — synchronous, but log the event the same way.
+        async def _triage():
+            return mock_triage(signal_name)
+
+        triage = await self._run_step("triage", signal_name, _triage, TriageError)
         result["steps"]["triage"] = triage
         details = triage["details"]
-        print(f"  → Verdict: {triage['verdict']}")
-        print(f"  → Platforms: {', '.join(f'{k}={v}' for k, v in details.get('platform_breakdown', {}).items() if v > 50)}")
-        print(f"  → Windows: {details.get('windows_percentage', 0)}%")
+        logger.info(
+            "triage.detail",
+            extra={
+                "event": "triage.detail",
+                "signal_name": signal_name,
+                "verdict": triage["verdict"],
+                "windows_percentage": details.get("windows_percentage", 0),
+                "platform_breakdown": details.get("platform_breakdown", {}),
+            },
+        )
 
-        # Step 2: WoW (mock)
-        print(f"[Step 2] WoW comparison")
-        wow = mock_wow(signal_name, repo)
+        async def _wow():
+            return mock_wow(signal_name, repo)
+
+        wow = await self._run_step("wow", signal_name, _wow, WoWError)
         result["steps"]["wow"] = wow
-        print(f"  → This week: {wow['current_count']}, Last week: {wow['previous_count']}")
-        print(f"  → Trend: {wow['trend']} ({wow['change_percent']}%)")
+        logger.info(
+            "wow.detail",
+            extra={
+                "event": "wow.detail",
+                "signal_name": signal_name,
+                "current_count": wow["current_count"],
+                "previous_count": wow["previous_count"],
+                "trend": wow["trend"],
+                "change_percent": wow["change_percent"],
+            },
+        )
 
-        # Step 3: LLM reasoning
-        print(f"[Step 3] LLM reasoning & action")
-        try:
-            analysis = await step_reason_and_act(
-                None,  # no teams client
-                self.memory,
-                triage, wow,
-                "",  # no teams channel in mock mode
-                model=model,
-                extra_context=extra_context,
+        async def _reason():
+            return await step_reason_and_act(
+                None, self.memory, triage, wow, "",
+                model=model, extra_context=extra_context,
             )
-        except (OncallError, ValueError):
-            raise
-        except Exception as e:
-            raise ReasoningError(f"step_reason_and_act failed: {e}") from e
+
+        analysis = await self._run_step("reason", signal_name, _reason, ReasoningError)
         result["steps"]["analysis"] = analysis
-        print(f"  → Severity: {analysis['severity']}")
+        logger.info(
+            "reason.detail",
+            extra={
+                "event": "reason.detail",
+                "signal_name": signal_name,
+                "severity": analysis["severity"],
+            },
+        )
 
         result["severity"] = analysis["severity"]
         result["summary"] = analysis["summary"]
@@ -140,52 +245,74 @@ class OncallOrchestrator:
 
         # Step 1
         if intent.get("should_run_triage", True):
-            print(f"[Step 1] Triage: {signal_name}")
-            try:
-                triage = await step_triage(adx_client, signal_name)
-            except (OncallError, ValueError):
-                raise
-            except Exception as e:
-                raise TriageError(f"step_triage failed: {e}") from e
+            triage = await self._run_step(
+                "triage", signal_name,
+                lambda: step_triage(adx_client, signal_name),
+                TriageError,
+            )
             result["steps"]["triage"] = triage
-            print(f"  → Verdict: {triage['verdict']}")
+            logger.info(
+                "triage.detail",
+                extra={"event": "triage.detail",
+                       "signal_name": signal_name,
+                       "verdict": triage["verdict"]},
+            )
         else:
-            result["steps"]["triage"] = {"verdict": "Skipped", "details": {}, "signal_name": signal_name}
+            result["steps"]["triage"] = {
+                "verdict": "Skipped", "details": {}, "signal_name": signal_name,
+            }
+            logger.info(
+                "step.skipped",
+                extra={"event": "step.skipped",
+                       "step_name": "triage", "signal_name": signal_name},
+            )
 
         # Step 2
         if intent.get("should_run_wow", True):
-            print(f"[Step 2] WoW comparison")
-            try:
-                wow = await step_wow_compare(adx_client, github_client, signal_name, repo)
-            except (OncallError, ValueError):
-                raise
-            except Exception as e:
-                raise WoWError(f"step_wow_compare failed: {e}") from e
+            wow = await self._run_step(
+                "wow", signal_name,
+                lambda: step_wow_compare(adx_client, github_client, signal_name, repo),
+                WoWError,
+            )
             result["steps"]["wow"] = wow
-            print(f"  → Trend: {wow['trend']} ({wow['change_percent']}%)")
+            logger.info(
+                "wow.detail",
+                extra={"event": "wow.detail",
+                       "signal_name": signal_name,
+                       "trend": wow["trend"],
+                       "change_percent": wow["change_percent"]},
+            )
         else:
             result["steps"]["wow"] = {
                 "current_count": 0, "previous_count": 0, "delta": 0,
                 "change_percent": 0, "trend": "skipped", "recent_changes": [],
             }
+            logger.info(
+                "step.skipped",
+                extra={"event": "step.skipped",
+                       "step_name": "wow", "signal_name": signal_name},
+            )
 
         # Step 3
-        print(f"[Step 3] Reasoning & action")
         should_notify = intent.get("should_notify", bool(teams_channel))
-        try:
-            analysis = await step_reason_and_act(
+        analysis = await self._run_step(
+            "reason", signal_name,
+            lambda: step_reason_and_act(
                 teams_client, self.memory,
                 result["steps"]["triage"], result["steps"]["wow"],
                 teams_channel if should_notify else "",
                 model=model, extra_context=extra_context,
-            )
-        except (OncallError, ValueError):
-            raise
-        except Exception as e:
-            raise ReasoningError(f"step_reason_and_act failed: {e}") from e
+            ),
+            ReasoningError,
+        )
         result["steps"]["analysis"] = analysis
-        print(f"  → Severity: {analysis['severity']}")
-        print(f"  → Teams sent: {analysis['teams_sent']}")
+        logger.info(
+            "reason.detail",
+            extra={"event": "reason.detail",
+                   "signal_name": signal_name,
+                   "severity": analysis["severity"],
+                   "teams_sent": analysis.get("teams_sent", False)},
+        )
 
         result["severity"] = analysis["severity"]
         result["summary"] = analysis["summary"]
