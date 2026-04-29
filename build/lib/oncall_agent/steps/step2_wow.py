@@ -87,9 +87,14 @@ async def step_wow_compare(
         try:
             gh_query = GITHUB_RECENT_CHANGES_QUERY.format(signal_name=signal_name, repo=repo)
             gh_result = await adx_client.call_tool("execute_query", {"query": gh_query})
-            recent_changes = gh_result.get("content", [])
-        except Exception:
-            pass  # GitHub metrics optional
+            recent_changes = gh_result.get("content", []) if isinstance(gh_result, dict) else []
+        except Exception as e:
+            # GitHub metrics correlation is optional — log and continue
+            import logging
+            logging.getLogger(__name__).warning(
+                "github recent-changes correlation failed for repo=%s: %s", repo, e
+            )
+            recent_changes = []
 
     return {
         "current_count": current,

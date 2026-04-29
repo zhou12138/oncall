@@ -8,6 +8,13 @@ Supports two modes:
 from oncall_agent.memory.store import OncallMemory
 from oncall_agent.config import config
 from oncall_agent.copilot_proxy import get_proxy
+from oncall_agent.errors import (
+    MCPError,
+    OncallError,
+    ReasoningError,
+    TriageError,
+    WoWError,
+)
 
 
 class OncallOrchestrator:
@@ -76,14 +83,19 @@ class OncallOrchestrator:
 
         # Step 3: LLM reasoning
         print(f"[Step 3] LLM reasoning & action")
-        analysis = await step_reason_and_act(
-            None,  # no teams client
-            self.memory,
-            triage, wow,
-            "",  # no teams channel in mock mode
-            model=model,
-            extra_context=extra_context,
-        )
+        try:
+            analysis = await step_reason_and_act(
+                None,  # no teams client
+                self.memory,
+                triage, wow,
+                "",  # no teams channel in mock mode
+                model=model,
+                extra_context=extra_context,
+            )
+        except (OncallError, ValueError):
+            raise
+        except Exception as e:
+            raise ReasoningError(f"step_reason_and_act failed: {e}") from e
         result["steps"]["analysis"] = analysis
         print(f"  → Severity: {analysis['severity']}")
 
@@ -129,7 +141,12 @@ class OncallOrchestrator:
         # Step 1
         if intent.get("should_run_triage", True):
             print(f"[Step 1] Triage: {signal_name}")
-            triage = await step_triage(adx_client, signal_name)
+            try:
+                triage = await step_triage(adx_client, signal_name)
+            except (OncallError, ValueError):
+                raise
+            except Exception as e:
+                raise TriageError(f"step_triage failed: {e}") from e
             result["steps"]["triage"] = triage
             print(f"  → Verdict: {triage['verdict']}")
         else:
@@ -138,7 +155,12 @@ class OncallOrchestrator:
         # Step 2
         if intent.get("should_run_wow", True):
             print(f"[Step 2] WoW comparison")
-            wow = await step_wow_compare(adx_client, github_client, signal_name, repo)
+            try:
+                wow = await step_wow_compare(adx_client, github_client, signal_name, repo)
+            except (OncallError, ValueError):
+                raise
+            except Exception as e:
+                raise WoWError(f"step_wow_compare failed: {e}") from e
             result["steps"]["wow"] = wow
             print(f"  → Trend: {wow['trend']} ({wow['change_percent']}%)")
         else:
@@ -150,12 +172,17 @@ class OncallOrchestrator:
         # Step 3
         print(f"[Step 3] Reasoning & action")
         should_notify = intent.get("should_notify", bool(teams_channel))
-        analysis = await step_reason_and_act(
-            teams_client, self.memory,
-            result["steps"]["triage"], result["steps"]["wow"],
-            teams_channel if should_notify else "",
-            model=model, extra_context=extra_context,
-        )
+        try:
+            analysis = await step_reason_and_act(
+                teams_client, self.memory,
+                result["steps"]["triage"], result["steps"]["wow"],
+                teams_channel if should_notify else "",
+                model=model, extra_context=extra_context,
+            )
+        except (OncallError, ValueError):
+            raise
+        except Exception as e:
+            raise ReasoningError(f"step_reason_and_act failed: {e}") from e
         result["steps"]["analysis"] = analysis
         print(f"  → Severity: {analysis['severity']}")
         print(f"  → Teams sent: {analysis['teams_sent']}")

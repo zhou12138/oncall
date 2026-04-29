@@ -15,6 +15,13 @@ from oncall_agent.copilot_proxy import get_proxy
 from oncall_agent.memory.store import OncallMemory
 from oncall_agent.workspace import WorkspaceManager
 from oncall_agent.config import config
+from oncall_agent.errors import (
+    MCPError,
+    OncallError,
+    ReasoningError,
+    TriageError,
+    WoWError,
+)
 
 app = FastAPI(title="OnCall Agent", version="0.1.0")
 orchestrator = OncallOrchestrator()
@@ -174,6 +181,18 @@ async def trigger_oncall(req: TriggerRequest):
             raw_reasoning=result.get("steps", {}).get("analysis", {}).get("reasoning", ""),
         )
 
+    except ValueError as e:
+        # Input validation (e.g. sanitize_signal_name) → Unprocessable Entity
+        raise HTTPException(status_code=422, detail=str(e))
+    except (TriageError, WoWError, MCPError) as e:
+        # Upstream MCP / data dependency failure
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}")
+    except ReasoningError as e:
+        raise HTTPException(status_code=502, detail=f"ReasoningError: {e}")
+    except OncallError as e:
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
