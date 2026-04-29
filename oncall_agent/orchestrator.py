@@ -1,22 +1,15 @@
 """Orchestrator — runs the 3-step oncall pipeline.
 
-Two execution backends share a single ``_run_pipeline`` driver, selected at
-construction by the presence of MCP server URLs:
-
-  * :class:`MCPProvider` — full mode: ADX/GitHub/Teams MCP connectors.
-  * :class:`MockProvider` — fallback: deterministic mock data + LLM reasoning.
-
-Both implement the :class:`DataProvider` :class:`~typing.Protocol`, so adding
-a new backend (e.g. a recorded-fixture provider for tests) is a matter of
-matching that surface — no changes to ``_run_pipeline`` required.
+The pipeline is provider-agnostic: any object satisfying
+``oncall_agent.providers.DataProvider`` (mock, MCP-backed, or future
+providers) can drive triage / WoW / reasoning. ``select_provider``
+picks MCP when any MCP server is configured, otherwise the mock
+provider, so this orchestrator no longer needs separate code paths.
 """
-
-from __future__ import annotations
-
-from typing import Any, Optional, Protocol
 
 from oncall_agent.memory.store import OncallMemory
 from oncall_agent.models.incident import Incident
+from oncall_agent.providers import DataProvider, select_provider
 from oncall_agent.routing import route_incident
 from oncall_agent.config import config
 from oncall_agent.errors import (
@@ -50,151 +43,26 @@ def list_incidents() -> list[Incident]:
     return list(_incidents.values())
 
 
-# ─── DataProvider protocol ──────────────────────────────────────────────────
-
-
-class DataProvider(Protocol):
-    """Backend abstraction the unified pipeline drives.
-
-    A provider produces step results from a signal_name + optional repo.
-    Implementations are async-capable; the orchestrator awaits everything.
-    """
-
-    mode: str
-
-    async def triage(self, signal_name: str) -> dict: ...
-
-    async def wow(self, signal_name: str, repo: str) -> dict: ...
-
-    async def enrich_logs(self, signal_name: str) -> str: ...
-
-    async def reason(
-        self,
-        memory: OncallMemory,
-        triage_result: dict,
-        wow_result: dict,
-        teams_channel: str,
-        *,
-        model: Optional[str],
-        extra_context: str,
-        run_id: str,
-    ) -> dict: ...
-
-
-# ─── Concrete providers ─────────────────────────────────────────────────────
-
-
-class MockProvider:
-    """Deterministic mock connectors + LLM reasoning. No MCP required."""
-
-    mode = "mock"
-
-    async def triage(self, signal_name: str) -> dict:
-        from oncall_agent.connectors.mock import mock_triage
-        return mock_triage(signal_name)
-
-    async def wow(self, signal_name: str, repo: str) -> dict:
-        from oncall_agent.connectors.mock import mock_wow
-        return mock_wow(signal_name, repo)
-
-    async def enrich_logs(self, signal_name: str) -> str:
-        # No log source in mock mode.
-        return ""
-
-    async def reason(
-        self,
-        memory: OncallMemory,
-        triage_result: dict,
-        wow_result: dict,
-        teams_channel: str,
-        *,
-        model: Optional[str],
-        extra_context: str,
-        run_id: str,
-    ) -> dict:
-        from oncall_agent.steps.step3_reason import step_reason_and_act
-        return await step_reason_and_act(
-            None, memory, triage_result, wow_result, "",
-            model=model, extra_context=extra_context, run_id=run_id,
-        )
-
-
-class MCPProvider:
-    """Full-mode provider backed by ADX, GitHub, and Teams MCP clients."""
-
-    mode = "mcp"
-
-    def __init__(self) -> None:
-        from oncall_agent.mcp_clients.client import MCPClient
-        self.adx = MCPClient("adx-kusto", config.adx_mcp.url)
-        self.github = MCPClient("github", config.github_mcp.url)
-        self.teams = MCPClient("teams", config.teams_mcp.url)
-
-    async def triage(self, signal_name: str) -> dict:
-        from oncall_agent.steps.step1_triage import step_triage
-        return await step_triage(self.adx, signal_name)
-
-    async def wow(self, signal_name: str, repo: str) -> dict:
-        from oncall_agent.steps.step2_wow import step_wow_compare
-        return await step_wow_compare(self.adx, self.github, signal_name, repo)
-
-    async def enrich_logs(self, signal_name: str) -> str:
-        from oncall_agent.ingestion.log_enricher import enrich_with_logs
-        return await enrich_with_logs(self.adx, signal_name)
-
-    async def reason(
-        self,
-        memory: OncallMemory,
-        triage_result: dict,
-        wow_result: dict,
-        teams_channel: str,
-        *,
-        model: Optional[str],
-        extra_context: str,
-        run_id: str,
-    ) -> dict:
-        from oncall_agent.steps.step3_reason import step_reason_and_act
-        return await step_reason_and_act(
-            self.teams, memory, triage_result, wow_result, teams_channel,
-            model=model, extra_context=extra_context, run_id=run_id,
-        )
-
-
-# ─── Orchestrator ───────────────────────────────────────────────────────────
-
-
-_SKIPPED_TRIAGE = {"verdict": "Skipped", "details": {}}
-_SKIPPED_WOW = {
-    "current_count": 0, "previous_count": 0, "delta": 0,
-    "change_percent": 0, "trend": "skipped", "recent_changes": [],
-}
-
-
 class OncallOrchestrator:
-    """Orchestrates the 3-step oncall analysis pipeline."""
+    """Drives the 3-step oncall analysis pipeline through a DataProvider."""
 
-    def __init__(self) -> None:
+    def __init__(self, provider: DataProvider | None = None):
         self.memory = OncallMemory(config.memory_path)
-        self._mcp_available = bool(
-            config.adx_mcp.url or config.github_mcp.url or config.teams_mcp.url
-        )
-
-    def _make_provider(self) -> DataProvider:
-        return MCPProvider() if self._mcp_available else MockProvider()
+        self.provider: DataProvider = provider or select_provider()
 
     async def run(
         self,
         signal_name: str,
         repo: str = "",
         teams_channel: str = "",
-        model: Optional[str] = None,
-        intent: Optional[dict] = None,
+        model: str = None,
+        intent: dict = None,
         raw_query: str = "",
-        run_id: Optional[str] = None,
+        run_id: str | None = None,
     ) -> dict:
+        """Execute the pipeline using the configured provider."""
         rid = run_id or new_run_id()
         trace = RunTrace(run_id=rid, signal_name=signal_name)
-        provider = self._make_provider()
         with run_id_scope(rid):
             run_started = now_ms()
             logger.info(
@@ -203,17 +71,17 @@ class OncallOrchestrator:
                     "event": "run.started",
                     "run_id": rid,
                     "signal_name": signal_name,
-                    "mode": provider.mode,
+                    "mode": self.provider.mode,
                 },
             )
             try:
                 result = await self._run_pipeline(
-                    provider,
+                    self.provider,
                     signal_name=signal_name,
                     repo=repo,
                     teams_channel=teams_channel,
                     model=model,
-                    intent=intent or {},
+                    intent=intent,
                     raw_query=raw_query,
                     trace=trace,
                 )
@@ -233,7 +101,6 @@ class OncallOrchestrator:
             trace.mark_completed()
             result["run_id"] = rid
             result["trace"] = trace.to_dict()
-
             owner = route_incident(signal_name)
             incident = Incident(
                 run_id=rid,
@@ -268,7 +135,7 @@ class OncallOrchestrator:
         wrap_error: type[OncallError],
         trace: RunTrace | None = None,
         result_summary_fn=None,
-    ) -> Any:
+    ):
         """Run a single step coroutine with logging + error wrapping."""
         step = trace.start_step(step_name) if trace is not None else None
         log_step_event(logger, "started", step_name=step_name, signal_name=signal_name)
@@ -317,19 +184,16 @@ class OncallOrchestrator:
         signal_name: str,
         repo: str,
         teams_channel: str,
-        model: Optional[str],
-        intent: dict,
+        model: str | None,
+        intent: dict | None,
         raw_query: str,
-        trace: RunTrace,
+        trace: RunTrace | None,
     ) -> dict:
-        """Provider-agnostic 3-step pipeline driver.
-
-        The branching that used to live in ``_run_with_mcp`` /
-        ``_run_with_mock`` is gone; provider methods supply the data, this
-        function handles tracing, logging, intent-driven skips, and result
-        assembly identically for every backend.
+        """Single pipeline body. Provider supplies the data; this method
+        owns logging, skip-handling, error wrapping and memory persistence.
         """
-        result: dict = {"signal_name": signal_name, "steps": {}, "mode": provider.mode}
+        result = {"signal_name": signal_name, "steps": {}, "mode": provider.mode}
+        intent = intent or {}
 
         extra_context = ""
         if raw_query:
@@ -339,7 +203,7 @@ class OncallOrchestrator:
         if intent.get("kusto_hints"):
             extra_context += f"\n\n## Kusto Hints\n{', '.join(intent['kusto_hints'])}"
 
-        # ─── Step 1: triage ────────────────────────────────────────────────
+        # ── Step 1: Triage ───────────────────────────────────────────────
         if intent.get("should_run_triage", True):
             triage = await self._run_step(
                 "triage", signal_name,
@@ -355,13 +219,12 @@ class OncallOrchestrator:
                        "signal_name": signal_name,
                        "verdict": triage.get("verdict")},
             )
-            # Optional log enrichment after triage (provider-specific).
             try:
-                log_ctx = await provider.enrich_logs(signal_name)
-            except Exception as e:  # noqa: BLE001 — non-fatal
+                log_ctx = await provider.enrich(signal_name)
+            except Exception as e:  # noqa: BLE001 — enrichment is best-effort
                 logger.warning(
-                    "log_enricher.error",
-                    extra={"event": "log_enricher.error",
+                    "enrich.failed",
+                    extra={"event": "enrich.failed",
                            "signal_name": signal_name,
                            "error": f"{type(e).__name__}: {e}"},
                 )
@@ -369,7 +232,9 @@ class OncallOrchestrator:
             if log_ctx:
                 extra_context += log_ctx
         else:
-            result["steps"]["triage"] = {**_SKIPPED_TRIAGE, "signal_name": signal_name}
+            result["steps"]["triage"] = {
+                "verdict": "Skipped", "details": {}, "signal_name": signal_name,
+            }
             if trace is not None:
                 trace.start_step("triage").mark_skipped("intent.should_run_triage=false")
             logger.info(
@@ -378,11 +243,11 @@ class OncallOrchestrator:
                        "step_name": "triage", "signal_name": signal_name},
             )
 
-        # ─── Step 2: WoW ───────────────────────────────────────────────────
+        # ── Step 2: WoW ─────────────────────────────────────────────────
         if intent.get("should_run_wow", True):
             wow = await self._run_step(
                 "wow", signal_name,
-                lambda: provider.wow(signal_name, repo),
+                lambda: provider.wow_compare(signal_name, repo),
                 WoWError,
                 trace=trace,
                 result_summary_fn=lambda r: f"{r.get('trend')} {r.get('change_percent')}%",
@@ -392,11 +257,16 @@ class OncallOrchestrator:
                 "wow.detail",
                 extra={"event": "wow.detail",
                        "signal_name": signal_name,
+                       "current_count": wow.get("current_count"),
+                       "previous_count": wow.get("previous_count"),
                        "trend": wow.get("trend"),
                        "change_percent": wow.get("change_percent")},
             )
         else:
-            result["steps"]["wow"] = dict(_SKIPPED_WOW)
+            result["steps"]["wow"] = {
+                "current_count": 0, "previous_count": 0, "delta": 0,
+                "change_percent": 0, "trend": "skipped", "recent_changes": [],
+            }
             if trace is not None:
                 trace.start_step("wow").mark_skipped("intent.should_run_wow=false")
             logger.info(
@@ -405,19 +275,16 @@ class OncallOrchestrator:
                        "step_name": "wow", "signal_name": signal_name},
             )
 
-        # ─── Step 3: reason + (optional) notify ────────────────────────────
+        # ── Step 3: Reason + (optional) notify ──────────────────────────
         should_notify = intent.get("should_notify", bool(teams_channel))
-        effective_channel = teams_channel if should_notify else ""
+        rid = trace.run_id if trace is not None else ""
         analysis = await self._run_step(
             "reason", signal_name,
-            lambda: provider.reason(
-                self.memory,
-                result["steps"]["triage"],
-                result["steps"]["wow"],
-                effective_channel,
-                model=model,
-                extra_context=extra_context,
-                run_id=trace.run_id if trace is not None else "",
+            lambda: provider.reason_and_act(
+                result["steps"]["triage"], result["steps"]["wow"],
+                teams_channel if should_notify else "",
+                memory=self.memory, model=model,
+                extra_context=extra_context, run_id=rid,
             ),
             ReasoningError,
             trace=trace,
@@ -435,11 +302,11 @@ class OncallOrchestrator:
                    "teams_sent": analysis.get("teams_sent", False)},
         )
 
-        result["severity"] = analysis.get("severity")
+        result["severity"] = analysis.get("severity", "unknown")
         result["summary"] = analysis.get("summary", "")
         result["actions"] = analysis.get("actions", [])
 
-        # Mock provider used to record memory inline; do it here for parity.
+        # Compact final record (mock path didn't get one inside step3).
         if provider.mode == "mock":
             self.memory.record(signal_name, result)
 
