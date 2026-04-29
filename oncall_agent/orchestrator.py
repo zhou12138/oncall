@@ -333,6 +333,11 @@ class OncallOrchestrator:
                        "signal_name": signal_name,
                        "verdict": triage["verdict"]},
             )
+            # Best-effort log/stacktrace enrichment after triage.
+            from oncall_agent.ingestion.log_enricher import enrich_with_logs
+            log_ctx = await enrich_with_logs(adx_client, signal_name)
+            if log_ctx:
+                extra_context += log_ctx
         else:
             result["steps"]["triage"] = {
                 "verdict": "Skipped", "details": {}, "signal_name": signal_name,
