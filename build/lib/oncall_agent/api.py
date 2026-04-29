@@ -2,13 +2,20 @@
 
 The /trigger endpoint accepts raw incident metadata as a natural language string.
 The LLM reasons over it to extract signal, determine steps, and drive the pipeline.
+
+In Phase 1 (M1.3), /trigger is asynchronous: it returns 202 Accepted with a
+``run_id`` and the pipeline runs in the background. Clients poll
+``GET /runs/{run_id}`` for the trace and final result.
 """
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+import asyncio
 import json
+import uuid
+from typing import Optional
+
 import httpx
+from fastapi import FastAPI, HTTPException, Response
+from pydantic import BaseModel
 
 from oncall_agent.orchestrator import OncallOrchestrator
 from oncall_agent.copilot_proxy import get_proxy
@@ -22,13 +29,25 @@ from oncall_agent.errors import (
     TriageError,
     WoWError,
 )
-from oncall_agent.logging_config import configure_logging, get_logger
+from oncall_agent.logging_config import configure_logging, get_logger, new_run_id
+from oncall_agent.trace import RunTrace, STATUS_FAILED
 
 configure_logging()
 logger = get_logger(__name__)
 
 app = FastAPI(title="OnCall Agent", version="0.1.0")
 orchestrator = OncallOrchestrator()
+
+
+# ── In-memory run store ──────────────────────────────────────────────────────
+# Maps run_id → {"status", "trace": dict, "result": dict | None, "error": str | None}.
+# Process-local; Phase 2 may swap this for a durable store.
+_runs: dict[str, dict] = {}
+
+
+def _record_run(run_id: str, **fields) -> None:
+    entry = _runs.setdefault(run_id, {})
+    entry.update(fields)
 
 
 # ── Request / Response ───────────────────────────────────────────────────────
@@ -40,17 +59,20 @@ class TriggerRequest(BaseModel):
     model: str = ""               # override LLM model
 
 
-class TriggerResponse(BaseModel):
-    query: str
-    workspace: str
-    intent: dict                  # LLM-extracted intent
-    severity: str
-    summary: str
-    actions: list[str]
-    steps: dict
-    raw_reasoning: str
-    run_id: str = ""
+class TriggerAcceptedResponse(BaseModel):
+    """Returned with HTTP 202 when the pipeline is dispatched asynchronously."""
+    run_id: str
+    status: str = "accepted"
+    poll_url: str
+
+
+class RunStatusResponse(BaseModel):
+    run_id: str
+    status: str                # accepted | running | completed | failed
     trace: dict = {}
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
 
 
 # ── Intent Extraction ────────────────────────────────────────────────────────
@@ -117,30 +139,17 @@ async def extract_intent(query: str, workspace_context: str = "", model: str = N
         }
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+# ── Background pipeline runner ──────────────────────────────────────────────
 
-@app.post("/trigger", response_model=TriggerResponse)
-async def trigger_oncall(req: TriggerRequest):
-    """Trigger oncall pipeline from raw incident metadata.
-    
-    The query can be anything:
-    - Raw ICM JSON serialized as string
-    - Alert webhook payload
-    - Free-text description
-    - Kusto query results
-    
-    The LLM extracts intent and drives the pipeline.
-    
-    Examples:
-        curl -X POST http://localhost:8090/trigger \\
-          -H "Content-Type: application/json" \\
-          -d '{"query": "ICM 12345678: Edge crash rate spiked 40% in WestUS2, component: BrowserCore, severity: 2, first seen 2024-03-15T08:00Z, impacting 50k users"}'
-        
-        curl -X POST http://localhost:8090/trigger \\
-          -d '{"query": "HighMemoryAlert fired for edge-renderer process, P95 memory usage crossed 2GB threshold, detected by Geneva monitor EdgeRendererMemory"}'
-    """
+
+async def _run_pipeline(run_id: str, req: TriggerRequest) -> None:
+    """Drive a single pipeline run; populate _runs[run_id] as we go."""
+    _record_run(run_id, status="running")
+    logger.info(
+        "pipeline.dispatched",
+        extra={"event": "pipeline.dispatched", "run_id": run_id},
+    )
     try:
-        # Resolve workspace
         ws_name = req.workspace or WorkspaceManager.get_active() or ""
         ws_context = ""
         ws = None
@@ -150,59 +159,101 @@ async def trigger_oncall(req: TriggerRequest):
                 ws_context = ws.get_llm_context()
 
         model = req.model or None
-
-        # Step 0: LLM extracts intent from raw metadata
         intent = await extract_intent(req.query, ws_context, model)
 
-        # Run pipeline based on intent
         result = await orchestrator.run(
             signal_name=intent.get("signal_name", "UnknownSignal"),
             repo=intent.get("repo", ""),
             teams_channel=intent.get("teams_channel", ""),
             model=model,
-            # Pass intent extras for enriched pipeline
             intent=intent,
             raw_query=req.query,
+            run_id=run_id,
         )
 
-        # Write to workspace memory
+        # Workspace memory
         if ws and ws.exists:
-            ws.append_memory("Recent Incidents",
+            ws.append_memory(
+                "Recent Incidents",
                 f"**{intent.get('signal_name', '')}** — "
                 f"{result.get('severity', 'unknown').upper()}\n"
                 f"- Query: {req.query[:200]}\n"
                 f"- Intent: {json.dumps(intent, default=str)[:300]}\n"
                 f"- Summary: {result.get('summary', '')}\n"
-                f"- Actions: {', '.join(result.get('actions', []))}"
+                f"- Actions: {', '.join(result.get('actions', []))}",
             )
 
-        return TriggerResponse(
-            query=req.query,
-            workspace=ws_name,
-            intent=intent,
-            severity=result.get("severity", "unknown"),
-            summary=result.get("summary", ""),
-            actions=result.get("actions", []),
-            steps=result.get("steps", {}),
-            raw_reasoning=result.get("steps", {}).get("analysis", {}).get("reasoning", ""),
-            run_id=result.get("run_id", ""),
+        envelope = {
+            "query": req.query,
+            "workspace": ws_name,
+            "intent": intent,
+            "severity": result.get("severity", "unknown"),
+            "summary": result.get("summary", ""),
+            "actions": result.get("actions", []),
+            "steps": result.get("steps", {}),
+            "raw_reasoning": result.get("steps", {})
+                .get("analysis", {}).get("reasoning", ""),
+            "run_id": run_id,
+            "trace": result.get("trace", {}),
+        }
+        _record_run(
+            run_id,
+            status="completed",
             trace=result.get("trace", {}),
+            result=envelope,
+            error=None,
+        )
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        logger.error(
+            "pipeline.error",
+            extra={"event": "pipeline.error", "run_id": run_id, "error": err},
+        )
+        prev = _runs.get(run_id, {})
+        trace = prev.get("trace") or {}
+        _record_run(
+            run_id,
+            status="failed",
+            trace=trace,
+            error=err,
+            result=None,
         )
 
-    except ValueError as e:
-        # Input validation (e.g. sanitize_signal_name) → Unprocessable Entity
-        raise HTTPException(status_code=422, detail=str(e))
-    except (TriageError, WoWError, MCPError) as e:
-        # Upstream MCP / data dependency failure
-        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}")
-    except ReasoningError as e:
-        raise HTTPException(status_code=502, detail=f"ReasoningError: {e}")
-    except OncallError as e:
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+# ── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@app.post("/trigger", status_code=202, response_model=TriggerAcceptedResponse)
+async def trigger_oncall(req: TriggerRequest, response: Response):
+    """Dispatch the oncall pipeline asynchronously.
+
+    Returns ``202 Accepted`` with a ``run_id`` immediately. The pipeline runs
+    in the background; poll ``GET /runs/{run_id}`` for status and result.
+    """
+    run_id = new_run_id()
+    _record_run(run_id, status="accepted", trace={}, result=None, error=None)
+    asyncio.create_task(_run_pipeline(run_id, req))
+    response.headers["Location"] = f"/runs/{run_id}"
+    return TriggerAcceptedResponse(
+        run_id=run_id,
+        status="accepted",
+        poll_url=f"/runs/{run_id}",
+    )
+
+
+@app.get("/runs/{run_id}", response_model=RunStatusResponse)
+async def get_run(run_id: str):
+    """Return the current trace and result for a run."""
+    entry = _runs.get(run_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"unknown run_id: {run_id}")
+    return RunStatusResponse(
+        run_id=run_id,
+        status=entry.get("status", "unknown"),
+        trace=entry.get("trace") or {},
+        result=entry.get("result"),
+        error=entry.get("error"),
+    )
 
 
 @app.get("/health")
