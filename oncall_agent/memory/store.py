@@ -263,6 +263,62 @@ class OncallMemory:
     def get_recent(self, section: str, n: int = 10) -> List[Dict]:
         return self.data.get(section, [])[-n:]
 
+    # -- Semantic recall (keyword Jaccard, no ML deps) --
+
+    @staticmethod
+    def _tokenize(name: str) -> set:
+        """Split a signal name into lowercase keyword tokens.
+
+        Splits on underscores, slashes, dashes, dots, and whitespace, then
+        further splits camelCase / PascalCase boundaries. Empty tokens are
+        dropped. Returns a set of lowercase tokens for set-based similarity.
+        """
+        if not name:
+            return set()
+        # First pass: split on common separators
+        parts = re.split(r"[\s_/\-.]+", name)
+        tokens: set = set()
+        for part in parts:
+            if not part:
+                continue
+            # Split camelCase / PascalCase: "EdgeCrashRate" -> Edge, Crash, Rate
+            sub = re.findall(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z0-9]+|[A-Z]+|[0-9]+", part)
+            if sub:
+                for s in sub:
+                    if s:
+                        tokens.add(s.lower())
+            else:
+                tokens.add(part.lower())
+        return tokens
+
+    def recall(self, signal_name: str, top_k: int = 3) -> List[Dict]:
+        """Return up to ``top_k`` historical incidents most similar to ``signal_name``.
+
+        Similarity is keyword Jaccard over tokenized signal names. Only
+        incidents with similarity > 0 are returned, sorted descending.
+        """
+        query_tokens = self._tokenize(signal_name)
+        if not query_tokens:
+            return []
+        scored: List[tuple] = []
+        for entry in self.data.get("incidents", []):
+            cand = entry.get("signal") or entry.get("signal_name") or entry.get("title", "")
+            cand_tokens = self._tokenize(cand)
+            if not cand_tokens:
+                continue
+            inter = len(query_tokens & cand_tokens)
+            if inter == 0:
+                continue
+            union = len(query_tokens | cand_tokens)
+            sim = inter / union if union else 0.0
+            if sim > 0:
+                scored.append((sim, entry))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [
+            {**entry, "_similarity": round(sim, 4)}
+            for sim, entry in scored[:top_k]
+        ]
+
     def record(self, signal_name: str, result: dict):
         """Record a completed oncall analysis to incidents."""
         self.add("incidents", {

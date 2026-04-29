@@ -61,8 +61,20 @@ async def step_reason_and_act(
     extra_context: str = "",
 ) -> dict:
     """LLM reasoning → summary → optional Teams notification."""
-    # Build prompt
-    memory_context = memory.get_context_for_llm()
+    # Build prompt — prefer semantic recall, fallback to recent context.
+    signal_name = triage_result.get("signal_name", "")
+    related = memory.recall(signal_name, top_k=3) if signal_name else []
+    if related:
+        lines = ["## Related Past Incidents (semantic recall)"]
+        for inc in related:
+            lines.append(
+                f"- [sim={inc.get('_similarity', 0):.2f}] "
+                f"{inc.get('signal') or inc.get('title','')} "
+                f"({inc.get('severity','?')}): {inc.get('summary','')}"
+            )
+        memory_context = "\n".join(lines)
+    else:
+        memory_context = memory.get_context_for_llm()
     user_prompt = USER_PROMPT_TEMPLATE.format(
         signal_name=triage_result.get("signal_name", ""),
         verdict=triage_result.get("verdict", ""),
