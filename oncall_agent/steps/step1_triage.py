@@ -4,6 +4,7 @@ Queries ADX via MCP to determine if the issue is global-first or Windows-first.
 """
 
 from oncall_agent.mcp_clients.client import MCPClient
+from oncall_agent.utils.parsing import ParseError, parse_mcp_text
 from oncall_agent.utils.sanitize import sanitize_signal_name
 
 # Kusto queries
@@ -59,15 +60,15 @@ async def step_triage(adx_client: MCPClient, signal_name: str) -> dict:
     details_result = await adx_client.call_tool("execute_query", {"query": details_query})
 
     # Parse verdict from result
-    verdict = "Unknown"
-    if isinstance(verdict_result, dict):
-        content = verdict_result.get("content", [{}])
-        if content and isinstance(content, list):
-            text = content[0].get("text", "")
-            if "Global First" in text:
-                verdict = "Global First"
-            elif "Windows First" in text:
-                verdict = "Windows First"
+    text = parse_mcp_text(verdict_result)
+    if "Global First" in text:
+        verdict = "Global First"
+    elif "Windows First" in text:
+        verdict = "Windows First"
+    else:
+        raise ParseError(
+            f"triage verdict not found in MCP response: {text[:200]!r}"
+        )
 
     return {
         "verdict": verdict,

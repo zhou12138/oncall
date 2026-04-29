@@ -4,6 +4,7 @@ Queries ADX for current vs previous period metrics, computes delta.
 """
 
 from oncall_agent.mcp_clients.client import MCPClient
+from oncall_agent.utils.parsing import parse_mcp_text, parse_wow_metrics
 from oncall_agent.utils.sanitize import sanitize_repo, sanitize_signal_name
 
 WOW_QUERY = """
@@ -66,24 +67,13 @@ async def step_wow_compare(
     query = WOW_QUERY.format(signal_name=signal_name)
     wow_result = await adx_client.call_tool("execute_query", {"query": query})
 
-    # Parse
-    current = 0
-    previous = 0
-    delta = 0
-    change_pct = 0.0
-
-    if isinstance(wow_result, dict):
-        content = wow_result.get("content", [{}])
-        if content and isinstance(content, list):
-            text = content[0].get("text", "")
-            # Simple parse — real impl would parse structured output
-            import re
-            nums = re.findall(r'[\d.]+', text)
-            if len(nums) >= 4:
-                current = int(float(nums[0]))
-                previous = int(float(nums[1]))
-                delta = int(float(nums[2]))
-                change_pct = float(nums[3])
+    # Parse — raises ParseError on malformed responses (no silent defaults)
+    text = parse_mcp_text(wow_result)
+    metrics = parse_wow_metrics(text)
+    current = metrics["current_count"]
+    previous = metrics["previous_count"]
+    delta = metrics["delta"]
+    change_pct = metrics["change_percent"]
 
     trend = "flat"
     if change_pct > 5:
