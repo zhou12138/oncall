@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: oncall-agent
+Version: 0.2.4
+Summary: OnCall Agent: HTTP trigger → Orchestration → MCP (ADX Kusto + GitHub + Teams)
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.29
+Requires-Dist: httpx>=0.27
+Requires-Dist: pydantic>=2.0
+Requires-Dist: openai>=1.30
+Requires-Dist: rich>=13.0
+Requires-Dist: prompt-toolkit>=3.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Requires-Dist: ruff; extra == "dev"

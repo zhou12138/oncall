@@ -1,0 +1,2 @@
+[console_scripts]
+oncall = oncall_agent.cli:main

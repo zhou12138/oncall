@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["oncall_agent*"]
+
+[project]
+name = "oncall-agent"
+version = "0.2.4"
+description = "OnCall Agent: HTTP trigger → Orchestration → MCP (ADX Kusto + GitHub + Teams)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "openai>=1.30",
+    "rich>=13.0",
+    "prompt-toolkit>=3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[project.scripts]
+oncall = "oncall_agent.cli:main"

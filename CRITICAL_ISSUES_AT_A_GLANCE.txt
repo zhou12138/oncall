@@ -1,0 +1,245 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║              ONCALL PROJECT — CRITICAL ISSUES AT A GLANCE                     ║
+║                                                                               ║
+║  Total Issues: 14 (3 HIGH, 6 MEDIUM, 5 LOW)                                  ║
+║  Files: 2,946 lines across 19 Python files                                   ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ISSUE #1: KQL INJECTION VULNERABILITY (HIGH)                                ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ WHERE: step1_triage.py:52,56  &  step2_wow.py:63,95                         ┃
+┃ CVSS:  7.1 (High)                                                            ┃
+┃ ROOT:  String format on Kusto literals without escaping                      ┃
+┃                                                                               ┃
+┃ CODE:  query = GLOBAL_FIRST_QUERY.format(signal_name=signal_name)           ┃
+┃        let SignalName = '{signal_name}';  ← UNESCAPED USER INPUT            ┃
+┃                                                                               ┃
+┃ ATTACK: signal_name = "'; DROP TABLE SignalTable // "                       ┃
+┃                                                                               ┃
+┃ IMPACT: ✗ Arbitrary KQL execution                                            ┃
+┃         ✗ Historical data leakage (extended time windows)                    ┃
+┃         ✗ Resource exhaustion (large queries)                                ┃
+┃                                                                               ┃
+┃ FIX:    1. Use Kusto parameter binding (@signal_name variable)               ┃
+┃         2. OR: Whitelist input: ^[A-Za-z0-9_]+$                              ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ISSUE #2: FRAGILE KQL RESPONSE PARSING (HIGH)                               ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ WHERE: step1_triage.py:59-68                                                ┃
+┃ ROOT:  Assumes response structure; returns "Unknown" silently on mismatch    ┃
+┃                                                                               ┃
+┃ CODE:  content = verdict_result.get("content", [{}])                        ┃
+┃        if content and isinstance(content, list):                            ┃
+┃            text = content[0].get("text", "")                                ┃
+┃            if "Global First" in text:  verdict = "Global First"             ┃
+┃        # If structure wrong → verdict="Unknown" (silent fallback)            ┃
+┃                                                                               ┃
+┃ FAILURE: MCP returns {"content": {"text": "Global First"}} (dict, not list) ┃
+┃          Result: verdict="Unknown" (no error logged)                         ┃
+┃                                                                               ┃
+┃ IMPACT: ✗ Triage silently fails                                              ┃
+┃         ✗ WoW analysis based on wrong verdict                                ┃
+┃         ✗ No indication to user that data is incomplete                      ┃
+┃                                                                               ┃
+┃ FIX:    1. Validate response schema before parsing                           ┃
+┃         2. Log parse failures at ERROR level                                 ┃
+┃         3. Return error status instead of silent fallback                    ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ISSUE #3: REGEX PARSING WITH WRONG ASSUMPTIONS (HIGH)                       ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ WHERE: step2_wow.py:77-83                                                   ┃
+┃ ROOT:  Extracts ALL decimals from text; assumes specific order               ┃
+┃                                                                               ┃
+┃ CODE:  import re                                                             ┃
+┃        nums = re.findall(r'[\d.]+', text)                                   ┃
+┃        if len(nums) >= 4:                                                    ┃
+┃            current = int(float(nums[0]))      # Assumes nums[0]=current      ┃
+┃            previous = int(float(nums[1]))    # Assumes nums[1]=previous      ┃
+┃            delta = int(float(nums[2]))       # Assumes nums[2]=delta         ┃
+┃            change_pct = float(nums[3])       # Assumes nums[3]=change_pct    ┃
+┃                                                                               ┃
+┃ FAILURE: Text contains "Metric: 1.5e3, Result: 2.0e3, Delta: 0.5e3, Pct: 50" ┃
+┃          Regex gets: [1, 5, 3, 2, 0, 3, 0, 5, 3, 50]                        ┃
+┃          Parses as: current=1, prev=5, delta=3, pct=2.0  ← ALL WRONG         ┃
+┃                                                                               ┃
+┃ IMPACT: ✗ Wrong WoW metrics computed                                         ┃
+┃         ✗ Trend analysis incorrect (up/down/flat based on wrong pct)         ┃
+┃         ✗ Silent fallback: if regex fails, stays 0 (initialized line 67)    ┃
+┃                                                                               ┃
+┃ FIX:    1. Parse response as structured JSON, not text regex                 ┃
+┃         2. Validate response schema                                          ┃
+┃         3. Handle scientific notation correctly                              ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ISSUE #4: DUAL CONFIG TRACK — CONFIG RESOLUTION BROKEN (MEDIUM)             ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ WHERE: config.py:96-103                                                     ┃
+┃ ROOT:  Two separate config resolution paths; second overwrites first        ┃
+┃                                                                               ┃
+┃ CODE:  # Line 102-103:                                                       ┃
+┃        config = Config()  # Sets llm_api_key from _get(file > env > default) ┃
+┃        config.llm_api_key = _resolve_api_key()  # OVERWRITES from file only  ┃
+┃                                                                               ┃
+┃        # _resolve_api_key() impl (line 97-99):                              ┃
+┃        def _resolve_api_key() -> str:                                        ┃
+┃            token_env = _file_cfg.get("llm", {}).get("_token_env", "...")     ┃
+┃            return os.getenv(token_env, "")  # Ignores env fallback!          ┃
+┃                                                                               ┃
+┃ SCENARIO: ~/.oncall/config.json: {}  (empty)                                ┃
+┃           Environment: GITHUB_TOKEN=sk-123                                   ┃
+┃                                                                               ┃
+┃           Expected: llm_api_key="sk-123"  (file > env fallback)              ┃
+┃           Actual:   llm_api_key=""         (env var ignored) ✗               ┃
+┃                                                                               ┃
+┃ IMPACT: ✗ Environment variables ignored as fallback                          ┃
+┃         ✗ Breaks config priority documentation                              ┃
+┃         ✗ Confusing behavior (file present=use env, file absent=ignore env)  ┃
+┃                                                                               ┃
+┃ FIX:    1. Single _get_config_value() function                               ┃
+┃         2. Clear priority: file > env > default (not dual paths)             ┃
+┃         3. Document which keys support env fallback                          ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ISSUE #5: MEMORY CONCURRENCY ON WINDOWS (MEDIUM)                            ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ WHERE: memory/store.py:222-225 (line 24-27 import)                          ┃
+┃ ROOT:  fcntl module unavailable on Windows; no fallback implemented          ┃
+┃                                                                               ┃
+┃ CODE:  try:                                                                  ┃
+┃            import fcntl                                                      ┃
+┃        except ImportError:                                                   ┃
+┃            fcntl = None  # Line 27                                           ┃
+┃                                                                               ┃
+┃        # In add() method (line 222-225):                                    ┃
+┃        if fcntl:                                                             ┃
+┃            lock_fd = open(lock_path, "a+")                                  ┃
+┃            fcntl.flock(lock_fd, fcntl.LOCK_EX)  # Only on Unix!              ┃
+┃                                                                               ┃
+┃ SCENARIO: Two processes call memory.add() simultaneously on Windows          ┃
+┃           1. Process A: reads memory.json                                    ┃
+┃           2. Process B: reads memory.json                                    ┃
+┃           3. Process A: writes memory.json with incident X                  ┃
+┃           4. Process B: writes memory.json (overwrites A's write) ✗          ┃
+┃           Result: Incident X lost; JSON may be corrupt                       ┃
+┃                                                                               ┃
+┃ IMPACT: ✗ Data loss on Windows (no locking)                                  ┃
+┃         ✗ JSON corruption from concurrent writes                             ┃
+┃         ✗ Silent failures (no error raised)                                  ┃
+┃                                                                               ┃
+┃ FIX:    1. Add pathlib.Lock() for Windows fallback                           ┃
+┃         2. OR: Use file rotation strategy (write-new-file, rename-atomic)    ┃
+┃         3. Test on Windows; CI should catch this                             ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ISSUE #6: CHARACTER LIMIT EVICTION UNPREDICTABLE (MEDIUM)                   ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ WHERE: memory/store.py:169-177                                              ┃
+┃ ROOT:  If entry > section_limit, while loop never terminates                ┃
+┃                                                                               ┃
+┃ CODE:  def _evict_oldest(self, section: str, needed_chars: int):            ┃
+┃            limit = self.section_limits.get(section, 3000)                   ┃
+┃            entries = self.data.get(section, [])                             ┃
+┃            while entries and self._section_char_count(section) + needed_chars > limit:
+┃                removed = entries.pop(0)  # Delete oldest                     ┃
+┃                                                                               ┃
+┃ SCENARIO: needed_chars=5000, section_limit=3000                              ┃
+┃           Entries: [50 chars, 100 chars, 200 chars] = 350 total              ┃
+┃                                                                               ┃
+┃           Iteration 1: 350 + 5000 > 3000? Yes → delete entry 1              ┃
+┃           Iteration 2: 300 + 5000 > 3000? Yes → delete entry 2              ┃
+┃           Iteration 3: 200 + 5000 > 3000? Yes → delete entry 3              ┃
+┃           Iteration 4: 0 + 5000 > 3000? Yes → but entries=[], exit ✓        ┃
+┃                                                                               ┃
+┃           Result: ENTIRE SECTION CLEARED (not just enough space)             ┃
+┃                                                                               ┃
+┃ IMPACT: ✗ Unpredictable memory behavior                                      ┃
+┃         ✗ Can delete all historical incidents to fit one large entry         ┃
+┃         ✗ No indication that section was cleared                             ┃
+┃                                                                               ┃
+┃ FIX:    1. Check if needed_chars > limit; reject or split entry              ┃
+┃         2. Add logging when entries are evicted                              ┃
+┃         3. Return success/failure indicator                                  ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ADDITIONAL MEDIUM-SEVERITY ISSUES (7-9)                                     ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ #7 - GitHub Metrics Exception Swallowed (step2_wow.py:93-99)                ┃
+┃      └─ Silent try/except; caller doesn't know if data missing due to error  ┃
+┃                                                                               ┃
+┃ #8 - JSON Parsing Fallback Too Broad (step3_reason.py:94-109)               ┃
+┃      └─ Any JSON error → generic "Review manually"; hides real severity      ┃
+┃                                                                               ┃
+┃ #9 - Teams Notification Failure Ignored (step3_reason.py:151-153)           ┃
+┃      └─ Exception printed to stdout; oncall team never notified              ┃
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ADDITIONAL MEDIUM-SEVERITY ISSUES (10-11)                                   ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                               ┃
+┃ #10 - Dedup Logic Bypassed by Nested Dicts (memory/store.py:194-202)        ┃
+┃       └─ Compares dicts with ==; doesn't handle nested structures            ┃
+┃       └─ Result: Nearly-identical incidents accumulate                       ┃
+┃                                                                               ┃
+┃ #11 - Credentials Stored Unencrypted (copilot_proxy.py:41-44)               ┃
+┃       └─ GitHub + Copilot tokens in plaintext JSON                           ┃
+┃       └─ Risk: Disk theft/copying → token compromise                         ┃
+┃       └─ Fix: Use OS keyring (macOS Keychain, Windows CredMgr, Linux libsecret)
+┃                                                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              QUICK PRIORITY LIST
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX FIRST (Today):
+  ▢ Issue #1:  KQL Injection — parameterize queries
+  ▢ Issue #2:  KQL Parsing — validate response schema
+  ▢ Issue #3:  Regex Parsing — parse as JSON, not regex
+
+FIX SECOND (This Week):
+  ▢ Issue #4:  Config Resolution — single _get() function
+  ▢ Issue #5:  Memory Locking — Windows fallback
+  ▢ Issue #6:  Eviction Logic — handle entry > limit
+
+FIX THIRD (This Sprint):
+  ▢ Issue #7-#11: Exception handling, credential storage, dedup logic
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FULL REPORT: oncall_analysis.md (895 lines)
+═══════════════════════════════════════════════════════════════════════════════

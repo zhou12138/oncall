@@ -1,0 +1,295 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║               ONCALL PROJECT — CRITICAL FINDINGS SUMMARY                   ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+PROJECT STATS:
+  Total Lines:     2,946 Python
+  Files Analyzed:  19 (excluding /build/)
+  Report Length:   895 lines
+
+SEVERITY BREAKDOWN:
+  🔴 HIGH (3):       KQL Injection, Fragile Parsing, Silent Fallbacks
+  🟠 MEDIUM (6):     Config issues, Memory safety, Teams notification failures
+  🟡 LOW (5):        Mock determinism, Workspace races, Token refresh edge cases
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL SECURITY ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣  KQL INJECTION VULNERABILITY — HIGH
+   Location:  step1_triage.py (lines 52, 56) + step2_wow.py (lines 63, 95)
+   Pattern:   GLOBAL_FIRST_QUERY.format(signal_name=signal_name)
+   Severity:  CVSS 7.1
+   Details:
+     - Unescaped user input in Kusto string literals
+     - Attack: signal_name = "'; DROP TABLE SignalTable // "
+     - Leaks historical data via extended time windows
+     - Requires ADX auth, but no input validation
+   
+   Fix: Use Kusto parameter binding OR whitelist validation (^[A-Za-z0-9_]+$)
+
+─────────────────────────────────────────────────────────────────────────────
+
+2️⃣  FRAGILE KQL RESPONSE PARSING — HIGH
+   Location:  step1_triage.py (lines 59-68)
+   Pattern:   Assumes response structure, returns "Unknown" silently
+   Details:
+     - Expects: {"content": [{"text": "Global First"}]}
+     - Gets:    {"content": {"text": "Global First"}} (wrong type)
+     - Result:  Verdict="Unknown" (no error raised)
+     - Impact:  Triage silently fails; WoW analysis based on wrong verdict
+   
+   Fix: Parse as structured JSON; validate schema; log parse failures
+
+─────────────────────────────────────────────────────────────────────────────
+
+3️⃣  REGEX PARSING WITH WRONG ASSUMPTIONS — HIGH
+   Location:  step2_wow.py (lines 77-83)
+   Pattern:   re.findall(r'[\d.]+', text) → assumes 4 specific numbers
+   Details:
+     - Extracts ANY decimal from text: "Metric: 1.5e3, Result: 2.0e3..."
+     - Assumes order: current[0], previous[1], delta[2], pct[3]
+     - Example failure: Gets [1,5,3,2,0,3...] parses as current=1, prev=5 ❌
+     - Silent fallback: If regex fails, values stay 0 (initialized line 67-70)
+   
+   Fix: Parse response as structured JSON, not regex on text
+
+═══════════════════════════════════════════════════════════════════════════════
+HIGH-PRIORITY ARCHITECTURE ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+4️⃣  DUAL CONFIG TRACK — CONFIG RESOLUTION BROKEN — MEDIUM
+   Location:  config.py (lines 96-103)
+   Details:
+     - Line 102: config = Config()  # Sets llm_api_key from _get() 
+     - Line 103: config.llm_api_key = _resolve_api_key()  # OVERWRITES
+     - _resolve_api_key() only checks file config, ignores GITHUB_TOKEN env
+     - Scenario: ~/.oncall/config.json has no llm section + env GITHUB_TOKEN=sk-123
+     - Result: llm_api_key="" (env var ignored) ❌
+   
+   Fix: Single _get_config_value() with clear priority: file > env > default
+
+─────────────────────────────────────────────────────────────────────────────
+
+5️⃣  MEMORY CONCURRENCY ON WINDOWS — MEDIUM
+   Location:  memory/store.py (lines 222-225)
+   Details:
+     - fcntl.flock() unavailable on Windows
+     - Code checks "if fcntl:" but skips locking entirely on Windows
+     - Race condition: Two add() calls simultaneously → JSON corruption
+     - Fix: No fallback mechanism for Windows file locking
+   
+   Fix: Use pathlib.Lock or file rotation strategy for Windows
+
+─────────────────────────────────────────────────────────────────────────────
+
+6️⃣  CHARACTER LIMIT EVICTION UNPREDICTABLE — MEDIUM
+   Location:  memory/store.py (lines 169-177)
+   Details:
+     - If entry_chars > section_limit, while loop deletes ALL entries
+     - Example: 5000-char incident added to 3000-char limit section
+     - Result: Entire section cleared (not just enough to fit new entry)
+   
+   Fix: Handle entry > limit case; reject or split entry
+
+═══════════════════════════════════════════════════════════════════════════════
+SILENT ERROR HANDLING ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+7️⃣  GITHUB METRICS EXCEPTION SWALLOWED — MEDIUM
+   Location:  step2_wow.py (lines 93-99)
+   Pattern:   try: ... except Exception: pass
+   Details:
+     - GitHub recent changes query fails silently
+     - Caller doesn't know if data is missing due to error or no data
+     - Correlation analysis continues with incomplete info
+   
+   Fix: Log at WARNING level; return error indicator in response
+
+─────────────────────────────────────────────────────────────────────────────
+
+8️⃣  JSON PARSING FALLBACK TOO BROAD — MEDIUM
+   Location:  step3_reason.py (lines 94-109)
+   Pattern:   Any JSON error → generic "Review manually" response
+   Details:
+     - LLM returns malformed JSON → returns severity="medium", actions=["Review manually"]
+     - Real issue may be critical, but fallback hides it
+     - No log; no indication parsing failed
+   
+   Fix: Log JSON parse error; try to extract fields individually
+
+─────────────────────────────────────────────────────────────────────────────
+
+9️⃣  TEAMS NOTIFICATION FAILURE IGNORED — MEDIUM
+   Location:  step3_reason.py (lines 151-153)
+   Pattern:   except Exception as e: print(...)
+   Details:
+     - Teams send failure → prints to stdout (debug log)
+     - Continues without warning; oncall team never notified
+     - teams_sent=True even if send failed
+   
+   Fix: Raise exception OR add retry logic; return teams_sent=False on failure
+
+═══════════════════════════════════════════════════════════════════════════════
+DEDUPLICATION & MEMORY ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+🔟  DEDUP LOGIC BYPASSED BY NESTED DICTS — MEDIUM
+   Location:  memory/store.py (lines 194-202)
+   Pattern:   Compares dicts with ==; doesn't handle nested structures
+   Details:
+     - Entry: {"title": "X", "details": {"a": 1}}
+     - Existing: {"title": "X", "details": {"a": 1}} (identical)
+     - Result: NOT deduplicated (different dict objects)
+     - Impact: Over time, nearly-identical incidents accumulate
+   
+   Fix: Use json.dumps(sort_keys=True) for hash-based dedup
+
+═══════════════════════════════════════════════════════════════════════════════
+SECURITY CREDENTIAL ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣1️⃣  CREDENTIALS STORED UNENCRYPTED — MEDIUM
+   Location:  copilot_proxy.py (lines 41-44)
+   Pattern:   Write JSON with tokens to ~/.oncall/copilot_credentials.json
+   Details:
+     - GitHub token + Copilot token in plaintext JSON
+     - File perms: 0o600 (user-readable) but not encrypted
+     - Risk: Disk theft/copying → token compromise
+   
+   Fix: Use OS keyring (keyring library, macOS Keychain, Windows CredMgr)
+
+═══════════════════════════════════════════════════════════════════════════════
+DETAILED FILE FUNCTION SIGNATURES & LINE NUMBERS
+═══════════════════════════════════════════════════════════════════════════════
+
+orchestrator.py:
+  ├─ OncallOrchestrator.__init__()              [16-20]
+  ├─ run(signal_name, repo="", teams_channel="", model=None, intent=None, raw_query="")
+  │                                             [22-39]
+  ├─ _run_with_mock(...)                        [41-97]   ⚠️  Silent step skipping
+  └─ _run_with_mcp(...)                         [99-167] ⚠️  No validation of MCP URLs
+
+steps/step1_triage.py:
+  ├─ step_triage(adx_client: MCPClient, signal_name: str)
+  │                                             [41-74]  🔴 KQL INJECTION (line 52)
+  └─ Constants:
+     ├─ GLOBAL_FIRST_QUERY                       [9-28]  🔴 INJECTION VECTOR
+     └─ SIGNAL_DETAILS_QUERY                     [30-38] 🔴 INJECTION VECTOR
+
+steps/step2_wow.py:
+  ├─ step_wow_compare(adx, github, signal_name, repo="")
+  │                                             [44-108] 🔴 KQL INJECTION (lines 63, 95)
+  ├─ WOW_QUERY                                  [8-30]   🔴 INJECTION + PARSING (77-83)
+  ├─ GITHUB_RECENT_CHANGES_QUERY                [32-41]  🔴 INJECTION (repo param)
+  └─ Fragile parsing (lines 77-83):
+     - re.findall() assumes 4 specific numbers in order
+     - Silent fallback: values stay 0 if regex fails
+
+steps/step3_reason.py:
+  ├─ step_reason_and_act(teams_client, memory, triage, wow, ...)
+  │                                             [51-162]
+  │                                             🔴 JSON parsing (94-109)
+  │                                             🟠 Teams error swallowing (151-153)
+  ├─ SYSTEM_PROMPT                              [12-30]
+  └─ USER_PROMPT_TEMPLATE                       [32-48]
+
+mcp_clients/client.py:
+  ├─ MCPClient.__init__(name: str, base_url: str)
+  │                                             [10-12]  ⚠️  No URL validation
+  ├─ call_tool(tool_name: str, arguments: dict) 
+  │                                             [14-31]  ⚠️  No error classification
+  └─ list_tools()                               [33-45]
+
+memory/store.py:
+  ├─ OncallMemory.__init__(path, section_limits, total_limit)
+  │                                             [83-101] ⚠️  Frozen snapshot
+  ├─ _load()                                    [112-119]
+  ├─ _save()                                    [121-141] ✓ Atomic I/O
+  ├─ add(section, entry)                        [206-252] 🟠 Dedup/locking issues
+  │   ├─ Dedup: _is_duplicate()                 [194-202] 🟠 Bypassed for nested dicts
+  │   ├─ Eviction: _evict_oldest()              [169-177] 🟠 Unpredictable
+  │   └─ File lock (fcntl)                      [222-225] 🟠 Missing on Windows
+  ├─ scan_content(text: str)                    [62-70]   🟡 Regex bypass possible
+  ├─ _section_char_count(section)               [159-164]
+  ├─ _total_char_count()                        [166-167]
+  ├─ _evict_global()                            [178-190] 🟠 Unpredictable
+  ├─ search(section, keyword)                   [254-261]
+  ├─ get_recent(section, n=10)                  [263-264]
+  ├─ record(signal_name, result)                [266-274]
+  ├─ get_context_for_llm(limit=5)               [276-282] ⚠️  Live (not snapshot)
+  ├─ _build_context(limit=5)                    [284-316]
+  └─ stats()                                    [320-338]
+
+config.py:
+  ├─ _load_file_config()                        [16-21]
+  ├─ _load_env_file()                           [24-31]  ⚠️  Naive parsing (no quoting)
+  ├─ _get(file_path, env_key, default)          [39-51]  🟠 Dual track issue
+  ├─ MCPServerConfig (Pydantic)                 [54-57]
+  ├─ Config class (Pydantic)                    [60-94]
+  │   ├─ host, port, llm_api_base, llm_api_key [62-68]
+  │   ├─ llm_model, llm_temperature             [68-69]
+  │   ├─ adx_mcp, github_mcp, teams_mcp        [72-86]
+  │   ├─ memory_path                            [89]
+  │   └─ default_teams_channel, default_repo    [92-93]
+  ├─ _resolve_api_key()                         [97-99]  🔴 Broken (ignores env fallback)
+  └─ Module-level instantiation                 [102-103] 🔴 OVERWRITES llm_api_key
+
+api.py:
+  ├─ TriggerRequest (Pydantic)                  [25-29]  ⚠️  No max_length on query
+  ├─ TriggerResponse (Pydantic)                 [32-40]
+  ├─ extract_intent(query, workspace_context="", model=None)
+  │                                             [70-104] 🟠 Silent fallback on JSON error
+  ├─ trigger_oncall(req: TriggerRequest)        [109-176]
+  │   ├─ Intent extraction                      [142]    🟠 Silent fallback
+  │   ├─ Workspace context truncation           [77]     ⚠️  Hard limit 2000 chars
+  │   └─ HTTP error handling                    [177-178] ⚠️  All → 500
+  ├─ health()                                   [181-184]
+  ├─ get_memory(workspace="")                   [187-195]
+  ├─ list_workspaces()                          [198-203]
+  └─ main()                                     [206-208]
+
+connectors/mock.py:
+  ├─ mock_triage(signal_name)                   [11-49]  🟡 Non-deterministic
+  └─ mock_wow(signal_name, repo="")             [52-105] 🟡 Non-deterministic
+
+copilot_proxy.py:
+  ├─ CopilotProxy.__init__()                    [52-57]
+  │   ├─ github_token, copilot_token (plaintext) 🟠 NO ENCRYPTION
+  │   └─ copilot_expires_at, chat_api_url
+  ├─ login()                                    [77-141] ✓ Device code flow
+  ├─ _refresh_copilot_token()                   [145-182] 🟡 Race condition risk
+  ├─ ensure_token()                             [184-190]
+  ├─ chat_completion(messages, model, temp, response_format)
+  │                                             [194-230] ✓ Retry on 401
+  ├─ chat_completion_stream(messages, model, temp)
+  │                                             [234-278] ✓ SSE streaming
+  ├─ is_logged_in                               [59-61]
+  ├─ is_token_valid                             [63-65]  🟡 60s buffer arbitrary
+  └─ _persist()                                 [67-73]
+
+workspace.py:
+  ├─ Workspace class
+  │   ├─ __init__(name)                         [79-84]
+  │   ├─ exists                                 [86-88]
+  │   ├─ create(team="", description="")        [90-108] ✓ Template-based
+  │   ├─ read_soul()                            [112-115]
+  │   ├─ write_soul(content)                    [117-118]
+  │   ├─ read_memory()                          [122-125]
+  │   ├─ append_memory(section, entry)          [127-152] 🟠 Fragile markdown logic
+  │   │                                               🟠 TOCTOU race
+  │   ├─ read_config()                          [156-160]
+  │   ├─ write_config(cfg)                      [162-165]
+  │   └─ get_llm_context()                      [167-176]
+  └─ WorkspaceManager (static methods)
+      ├─ list_workspaces()                      [185-191]
+      ├─ get(name)                              [194-195]
+      ├─ create(name, team="", description="")  [198-201]
+      ├─ delete(name)                           [204-208]
+      ├─ get_active()                           [211-216]
+      ├─ set_active(name)                       [219-223]
+      └─ get_active_workspace()                 [226-233]
+
+═══════════════════════════════════════════════════════════════════════════════
+FULL REPORT LOCATION: /tmp/oncall_analysis.md (895 lines)
+═══════════════════════════════════════════════════════════════════════════════
