@@ -229,6 +229,7 @@ class OncallOrchestrator:
             return await step_reason_and_act(
                 None, self.memory, triage, wow, "",
                 model=model, extra_context=extra_context,
+                run_id=trace.run_id if trace is not None else "",
             )
 
         analysis = await self._run_step(
@@ -353,6 +354,7 @@ class OncallOrchestrator:
                 result["steps"]["triage"], result["steps"]["wow"],
                 teams_channel if should_notify else "",
                 model=model, extra_context=extra_context,
+                run_id=trace.run_id if trace is not None else "",
             ),
             ReasoningError,
             trace=trace,

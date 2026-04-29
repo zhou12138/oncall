@@ -262,6 +262,31 @@ async def health():
     return {"status": "ok", "version": "0.1.0", "active_workspace": ws}
 
 
+# ── Action callbacks (Adaptive Card buttons) ────────────────────────────────
+
+_VALID_ACTIONS = {"ack", "escalate"}
+
+
+@app.post("/actions/{run_id}/{action}")
+async def post_action(run_id: str, action: str):
+    """Record an Adaptive Card action (ack/escalate) against a run."""
+    if action not in _VALID_ACTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown action: {action} (allowed: {sorted(_VALID_ACTIONS)})",
+        )
+    entry = _runs.get(run_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"unknown run_id: {run_id}")
+    actions_log = entry.setdefault("actions_log", [])
+    actions_log.append({"action": action})
+    if action == "ack":
+        entry["acknowledged"] = True
+    elif action == "escalate":
+        entry["escalated"] = True
+    return {"run_id": run_id, "action": action, "status": "recorded"}
+
+
 @app.get("/memory")
 async def get_memory(workspace: str = ""):
     """View memory — from workspace memory.md or JSON store."""

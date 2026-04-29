@@ -6,6 +6,7 @@ then optionally sends a summary to Teams via MCP.
 
 import json
 from oncall_agent.memory.store import OncallMemory
+from oncall_agent.cards.adaptive import build_adaptive_card
 from oncall_agent.config import config
 from oncall_agent.copilot_proxy import get_proxy
 from oncall_agent.logging_config import get_logger
@@ -59,6 +60,7 @@ async def step_reason_and_act(
     teams_channel: str = "",
     model: str = None,
     extra_context: str = "",
+    run_id: str = "",
 ) -> dict:
     """LLM reasoning → summary → optional Teams notification."""
     # Build prompt — prefer semantic recall, fallback to recent context.
@@ -147,21 +149,18 @@ async def step_reason_and_act(
     teams_sent = False
     if teams_client and teams_channel:
         try:
-            severity_emoji = {
-                "critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢", "info": "ℹ️"
-            }.get(analysis.get("severity", ""), "❓")
-
-            teams_msg = (
-                f"{severity_emoji} **OnCall Alert: {triage_result.get('signal_name', '')}**\n\n"
-                f"**Verdict:** {triage_result.get('verdict', '')}\n"
-                f"**Trend:** {wow_result.get('trend', '')} ({wow_result.get('change_percent', 0)}% WoW)\n\n"
-                f"**Summary:** {analysis.get('summary', '')}\n\n"
-                f"**Actions:**\n" + "\n".join(f"- {a}" for a in analysis.get("actions", []))
+            card = build_adaptive_card(
+                {
+                    "signal_name": triage_result.get("signal_name", ""),
+                    "severity": analysis.get("severity", ""),
+                    "summary": analysis.get("summary", ""),
+                    "steps": {"triage": triage_result, "wow": wow_result},
+                },
+                run_id=run_id,
             )
-
             await teams_client.call_tool("send_message", {
                 "channel": teams_channel,
-                "message": teams_msg,
+                "card": card,
             })
             teams_sent = True
         except Exception as e:
