@@ -4,6 +4,7 @@ Queries ADX for current vs previous period metrics, computes delta.
 """
 
 from oncall_agent.mcp_clients.client import MCPClient
+from oncall_agent.utils.sanitize import sanitize_repo, sanitize_signal_name
 
 WOW_QUERY = """
 let SignalName = '{signal_name}';
@@ -59,6 +60,8 @@ async def step_wow_compare(
             "recent_changes": [...],  # github PRs if repo provided
         }
     """
+    signal_name = sanitize_signal_name(signal_name)
+    repo = sanitize_repo(repo)
     # ADX: WoW numbers
     query = WOW_QUERY.format(signal_name=signal_name)
     wow_result = await adx_client.call_tool("execute_query", {"query": query})

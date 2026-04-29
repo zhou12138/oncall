@@ -4,6 +4,7 @@ Queries ADX via MCP to determine if the issue is global-first or Windows-first.
 """
 
 from oncall_agent.mcp_clients.client import MCPClient
+from oncall_agent.utils.sanitize import sanitize_signal_name
 
 # Kusto queries
 GLOBAL_FIRST_QUERY = """
@@ -48,6 +49,7 @@ async def step_triage(adx_client: MCPClient, signal_name: str) -> dict:
             "signal_name": str,
         }
     """
+    signal_name = sanitize_signal_name(signal_name)
     # Query 1: Global vs Windows first
     query = GLOBAL_FIRST_QUERY.format(signal_name=signal_name)
     verdict_result = await adx_client.call_tool("execute_query", {"query": query})
