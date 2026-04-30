@@ -11,6 +11,7 @@ Usage:
 
 import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -18,30 +19,78 @@ from typing import AsyncIterator
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 GITHUB_CLIENT_ID = "Iv1.b507a08c87ecfe98"  # VS Code Copilot client ID
 COPILOT_CHAT_URL = "https://api.individual.githubcopilot.com/chat/completions"  # default, overridden by token response
 COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
 
-CREDENTIALS_PATH = Path.home() / ".oncall" / "copilot_credentials.json"
+_KEYRING_SERVICE = "oncall-copilot"
 
 
-# ── Credential Persistence ────────────────────────────────────────────────────
+# ── Credential Persistence (keyring → env → file fallback) ──────────────────
+
+def _keyring_available() -> bool:
+    try:
+        import keyring as _kr  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
 
 def _load_credentials() -> dict:
-    if CREDENTIALS_PATH.exists():
+    """Load credentials: try keyring first, then env vars, then legacy file."""
+    # 1) keyring
+    if _keyring_available():
+        import keyring
         try:
-            return json.loads(CREDENTIALS_PATH.read_text())
-        except Exception:
-            pass
+            raw = keyring.get_password(_KEYRING_SERVICE, "credentials")
+            if raw:
+                return json.loads(raw)
+        except Exception as e:
+            logger.warning("keyring read failed, falling back: %s", e)
+
+    # 2) environment variables
+    gh_token = os.environ.get("ONCALL_GITHUB_TOKEN", "")
+    if gh_token:
+        return {
+            "github_token": gh_token,
+            "copilot_token": os.environ.get("ONCALL_COPILOT_TOKEN", ""),
+            "copilot_expires_at": int(os.environ.get("ONCALL_COPILOT_EXPIRES_AT", "0")),
+            "chat_api_url": os.environ.get("ONCALL_CHAT_API_URL", COPILOT_CHAT_URL),
+        }
+
+    # 3) legacy file (read-only migration path)
+    legacy_path = Path.home() / ".oncall" / "copilot_credentials.json"
+    if legacy_path.exists():
+        try:
+            creds = json.loads(legacy_path.read_text())
+            logger.info("Migrated credentials from legacy file to keyring")
+            _save_credentials(creds)  # migrate to keyring on first read
+            legacy_path.unlink(missing_ok=True)
+            return creds
+        except Exception as e:
+            logger.warning("legacy credentials file read failed: %s", e)
     return {}
 
 
 def _save_credentials(data: dict):
-    CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CREDENTIALS_PATH.write_text(json.dumps(data, indent=2))
-    CREDENTIALS_PATH.chmod(0o600)
+    """Save credentials to keyring; fall back to file if keyring unavailable."""
+    if _keyring_available():
+        import keyring
+        try:
+            keyring.set_password(_KEYRING_SERVICE, "credentials", json.dumps(data))
+            return
+        except Exception as e:
+            logger.warning("keyring write failed, falling back to file: %s", e)
+
+    # Fallback: secured file
+    cred_path = Path.home() / ".oncall" / "copilot_credentials.json"
+    cred_path.parent.mkdir(parents=True, exist_ok=True)
+    cred_path.write_text(json.dumps(data, indent=2))
+    cred_path.chmod(0o600)
 
 
 # ── CopilotProxy ──────────────────────────────────────────────────────────────
@@ -115,7 +164,8 @@ class CopilotProxy:
                         },
                     )
                     token_data = token_resp.json()
-                except Exception:
+                except Exception as e:
+                    logger.warning("device code poll request failed: %s", e)
                     continue
 
                 error = token_data.get("error")
@@ -274,7 +324,8 @@ class CopilotProxy:
                         content = chunk["choices"][0].get("delta", {}).get("content", "")
                         if content:
                             yield content
-                    except (json.JSONDecodeError, KeyError, IndexError):
+                    except (json.JSONDecodeError, KeyError, IndexError) as e:
+                        logger.debug("skipping unparseable SSE chunk: %s", e)
                         continue
 
 

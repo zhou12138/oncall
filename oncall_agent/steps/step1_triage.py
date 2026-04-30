@@ -9,18 +9,17 @@ from oncall_agent.utils.sanitize import sanitize_signal_name
 
 # Kusto queries
 GLOBAL_FIRST_QUERY = """
-// Check if this signal appeared globally before Windows
-let SignalName = '{signal_name}';
+declare query_parameters(p_SignalName: string);
 let LookbackDays = 14d;
 let GlobalFirst = toscalar(
     SignalTable
-    | where SignalName == SignalName
+    | where SignalName == p_SignalName
     | where Timestamp > ago(LookbackDays)
     | summarize FirstSeen = min(Timestamp)
 );
 let WindowsFirst = toscalar(
     SignalTable
-    | where SignalName == SignalName
+    | where SignalName == p_SignalName
     | where Platform == 'Windows'
     | where Timestamp > ago(LookbackDays)
     | summarize FirstSeen = min(Timestamp)
@@ -30,11 +29,11 @@ print GlobalFirstAppearance = GlobalFirst, WindowsFirstAppearance = WindowsFirst
 """
 
 SIGNAL_DETAILS_QUERY = """
-let SignalName = '{signal_name}';
+declare query_parameters(p_SignalName: string);
 SignalTable
-| where SignalName == SignalName
+| where SignalName == p_SignalName
 | where Timestamp > ago(14d)
-| summarize Count = count(), Platforms = make_set(Platform), 
+| summarize Count = count(), Platforms = make_set(Platform),
             FirstSeen = min(Timestamp), LastSeen = max(Timestamp)
     by SignalName
 """
@@ -51,13 +50,17 @@ async def step_triage(adx_client: MCPClient, signal_name: str) -> dict:
         }
     """
     signal_name = sanitize_signal_name(signal_name)
-    # Query 1: Global vs Windows first
-    query = GLOBAL_FIRST_QUERY.format(signal_name=signal_name)
-    verdict_result = await adx_client.call_tool("execute_query", {"query": query})
+    # Query 1: Global vs Windows first (parameterized to prevent KQL injection)
+    verdict_result = await adx_client.call_tool("execute_query", {
+        "query": GLOBAL_FIRST_QUERY,
+        "parameters": {"p_SignalName": signal_name},
+    })
 
-    # Query 2: Signal overview
-    details_query = SIGNAL_DETAILS_QUERY.format(signal_name=signal_name)
-    details_result = await adx_client.call_tool("execute_query", {"query": details_query})
+    # Query 2: Signal overview (parameterized)
+    details_result = await adx_client.call_tool("execute_query", {
+        "query": SIGNAL_DETAILS_QUERY,
+        "parameters": {"p_SignalName": signal_name},
+    })
 
     # Parse verdict from result
     text = parse_mcp_text(verdict_result)

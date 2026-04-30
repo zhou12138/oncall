@@ -8,21 +8,21 @@ from oncall_agent.utils.parsing import parse_mcp_text, parse_wow_metrics
 from oncall_agent.utils.sanitize import sanitize_repo, sanitize_signal_name
 
 WOW_QUERY = """
-let SignalName = '{signal_name}';
+declare query_parameters(p_SignalName: string);
 let CurrentStart = ago(7d);
 let PreviousStart = ago(14d);
 let PreviousEnd = ago(7d);
 // Current week
 let Current = toscalar(
     SignalTable
-    | where SignalName == SignalName
+    | where SignalName == p_SignalName
     | where Timestamp between (CurrentStart .. now())
     | summarize Count = count()
 );
 // Previous week
 let Previous = toscalar(
     SignalTable
-    | where SignalName == SignalName
+    | where SignalName == p_SignalName
     | where Timestamp between (PreviousStart .. PreviousEnd)
     | summarize Count = count()
 );
@@ -32,11 +32,10 @@ print CurrentWeek = Current, PreviousWeek = Previous,
 """
 
 GITHUB_RECENT_CHANGES_QUERY = """
-// Correlate with recent code changes from GitHub metrics
-let SignalName = '{signal_name}';
+declare query_parameters(p_SignalName: string, p_Repo: string);
 GitHubMetrics
 | where Timestamp > ago(14d)
-| where Repository has '{repo}'
+| where Repository has p_Repo
 | project Timestamp, Author, PRTitle, FilesChanged, Additions, Deletions
 | order by Timestamp desc
 | take 20
@@ -63,9 +62,11 @@ async def step_wow_compare(
     """
     signal_name = sanitize_signal_name(signal_name)
     repo = sanitize_repo(repo)
-    # ADX: WoW numbers
-    query = WOW_QUERY.format(signal_name=signal_name)
-    wow_result = await adx_client.call_tool("execute_query", {"query": query})
+    # ADX: WoW numbers (parameterized to prevent KQL injection)
+    wow_result = await adx_client.call_tool("execute_query", {
+        "query": WOW_QUERY,
+        "parameters": {"p_SignalName": signal_name},
+    })
 
     # Parse — raises ParseError on malformed responses (no silent defaults)
     text = parse_mcp_text(wow_result)
@@ -85,8 +86,10 @@ async def step_wow_compare(
     recent_changes = []
     if repo:
         try:
-            gh_query = GITHUB_RECENT_CHANGES_QUERY.format(signal_name=signal_name, repo=repo)
-            gh_result = await adx_client.call_tool("execute_query", {"query": gh_query})
+            gh_result = await adx_client.call_tool("execute_query", {
+                "query": GITHUB_RECENT_CHANGES_QUERY,
+                "parameters": {"p_SignalName": signal_name, "p_Repo": repo},
+            })
             recent_changes = gh_result.get("content", []) if isinstance(gh_result, dict) else []
         except Exception as e:
             # GitHub metrics correlation is optional — log and continue

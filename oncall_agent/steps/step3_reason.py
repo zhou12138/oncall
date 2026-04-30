@@ -115,7 +115,15 @@ async def step_reason_and_act(
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         analysis = json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "llm.json_parse_failed",
+            extra={
+                "event": "llm.json_parse_failed",
+                "error": str(e),
+                "response_preview": llm_response[:300],
+            },
+        )
         analysis = {
             "reasoning": llm_response,
             "summary": llm_response[:200],
