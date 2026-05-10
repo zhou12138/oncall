@@ -1,0 +1,23 @@
+items:
+- id: REQ-001
+  title: Analyze OnCall-Agent codebase and create development backlog
+  description: Analyze the Python project, understand architecture, identify improvements
+    and create board items.
+  priority: high
+  status: completed
+  item_type: task
+  labels:
+  - onboarding
+  task_ids:
+  - REQ-001-task-1
+  decompose_status: failed
+  cron_expr: ''
+  timeout_minutes: 30
+  last_fired_at: '2026-05-10T05:20:23.776148'
+  execution_started_at: null
+  completed_at: '2026-05-10T05:30:57.928721'
+  failure_reason: null
+  enabled: true
+  created_at: '2026-05-10T03:55:53.202659'
+  updated_at: '2026-05-10T05:30:57.928729'
+next_id: 2

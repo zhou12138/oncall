@@ -1,0 +1,13 @@
+{"t": 1778391055.3413355, "l": "[quality] Running gates: ['python_import', 'pytest']"}
+{"t": 1778391056.508722, "l": "[quality] python_import: \u2705 pass"}
+{"t": 1778391056.5089047, "l": "[quality] python_import output: OK\n"}
+{"t": 1778391056.5089707, "l": "[quality] pytest: \u2705 pass"}
+{"t": 1778391056.5090218, "l": "[quality] pytest output: .....................................................                    [100%]\n53 passed in 0.18s\n"}
+{"t": 1778391056.5093093, "l": "[quality] All gates passed \u2705"}
+{"t": 1778391056.5096748, "l": "[review] Starting dual-agent review (Opus)"}
+{"t": 1778391057.9283147, "l": "[review] Review adapter failed, auto-approved"}
+{"t": 1778391762.302456, "l": "[quality] Running gates: ['backend_import', 'frontend_build']"}
+{"t": 1778391774.356516, "l": "[quality] backend_import: \u274c fail"}
+{"t": 1778391774.356771, "l": "[quality] backend_import output: /bin/sh: 1: source: not found\n"}
+{"t": 1778391774.3568811, "l": "[quality] frontend_build: \u2705 pass"}
+{"t": 1778391774.3573284, "l": "[quality] FAILED gates: ['backend_import']"}

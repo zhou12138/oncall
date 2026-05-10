@@ -1,0 +1,4 @@
+{"t": 1778388752.3047013, "l": "[start] starting task 'Add `max_auto_fix_retries` to governance.yaml and Governance model' (role=developer)"}
+{"t": 1778388752.3048627, "l": "[adapter] dispatching to ClaudeCodeAdapter"}
+{"t": 1778388797.4057884, "l": "[state] \u2192 done"}
+{"t": 1778388797.4059305, "l": "[output] Done. Here's what was changed:\n\n**`governance.yaml`** \u2014 added `max_auto_fix_retries: 2` under the `scheduler:` section (alongside the existing `max_retries`):\n```yaml\nscheduler:\n  ...\n  max_auto_fix_r"}

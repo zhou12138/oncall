@@ -1,0 +1,273 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    OnCall-Agent v0.2.4 Architecture                             ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         EXTERNAL SOURCES                                     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  GitHub Copilot              MCP Servers              Teams/ICM Webhooks    │
+│  ├─ Device Code OAuth        ├─ ADX (Kusto)         ├─ Webhooks (HMAC)     │
+│  ├─ Chat Completion          ├─ GitHub API          └─ Channel Messages     │
+│  └─ Token Refresh            └─ Teams API                                    │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        FASTAPI HTTP API (api.py)                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  PORT 8090                                                                    │
+│  ├─ POST   /trigger              → Async pipeline dispatch (202 Accepted)   │
+│  ├─ GET    /runs/{run_id}        → Poll trace & result                      │
+│  ├─ POST   /actions/{run_id}     → Incident state transitions (ack/escalate)│
+│  ├─ POST   /webhooks/icm         → ICM webhook ingestion (HMAC verified)   │
+│  ├─ GET    /incidents            → List all incidents                        │
+│  ├─ GET    /memory               → View global/workspace memory             │
+│  └─ GET    /workspaces           → List workspaces                          │
+│                                                                               │
+│  Key Logic:                                                                   │
+│  • Intent Extraction (LLM → structured JSON)                                 │
+│  • Background Pipeline Runner (_run_pipeline)                                │
+│  • In-Memory Run Store (_runs: dict[run_id] → status/trace/result)         │
+│  • Auth Middleware (X-API-Key, optional)                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                   ONCALL ORCHESTRATOR (orchestrator.py)                       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  async def run(signal_name, repo, teams_channel, ...) → dict                │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────┐         │
+│  │ STEP 1: TRIAGE (step1_triage.py)                               │         │
+│  ├─────────────────────────────────────────────────────────────────┤         │
+│  │ • ADX Kusto Query: Global first vs Windows first?              │         │
+│  │ • Input: signal_name (sanitized)                               │         │
+│  │ • Output: {verdict, platform_breakdown, signal_name}           │         │
+│  │ • Error: TriageError (wrapped)                                 │         │
+│  └─────────────────────────────────────────────────────────────────┘         │
+│                                     │                                         │
+│                                     ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐         │
+│  │ STEP 2: WEEK-OVER-WEEK (step2_wow.py)                          │         │
+│  ├─────────────────────────────────────────────────────────────────┤         │
+│  │ • ADX: Current vs previous week metrics                         │         │
+│  │ • GitHub: Recent PRs correlated with signal (optional)         │         │
+│  │ • Input: signal_name, repo                                     │         │
+│  │ • Output: {current_count, previous_count, delta, trend, ...}   │         │
+│  │ • Error: WoWError (wrapped)                                    │         │
+│  └─────────────────────────────────────────────────────────────────┘         │
+│                                     │                                         │
+│                                     ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐         │
+│  │ STEP 3: LLM REASONING (step3_reason.py)                        │         │
+│  ├─────────────────────────────────────────────────────────────────┤         │
+│  │ • Input: triage + wow results + memory context                 │         │
+│  │ • LLM: Analyze root cause, recommend actions                   │         │
+│  │ • Output: {reasoning, summary, severity, actions}              │         │
+│  │ • Action: Teams notification (Adaptive Card, optional)         │         │
+│  │ • Memory: Persist to incidents/patterns/wow_comparisons        │         │
+│  │ • Error: ReasoningError (wrapped)                              │         │
+│  └─────────────────────────────────────────────────────────────────┘         │
+│                                                                               │
+│  Result Envelope:                                                             │
+│  {                                                                             │
+│    run_id, signal_name, severity, summary, actions,                         │
+│    steps: {triage, wow, analysis},                                          │
+│    trace: RunTrace (with StepTrace for each step),                          │
+│    incident: Incident (state machine)                                       │
+│  }                                                                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+         │                                          │
+         └─────────────┬──────────────────────────┬─┘
+                       │                          │
+                       ▼                          ▼
+        ┌──────────────────────────┐  ┌──────────────────────────┐
+        │   PROVIDER ABSTRACTION    │  │   DEPENDENCY INJECTION   │
+        │   (providers.py)          │  │   (config.py)            │
+        ├──────────────────────────┤  ├──────────────────────────┤
+        │ @runtime_checkable       │  │ Priority:                │
+        │ class DataProvider:      │  │ 1. ~/.oncall/config.json │
+        │   • triage()             │  │ 2. Environment variables │
+        │   • wow_compare()        │  │ 3. Defaults              │
+        │   • reason_and_act()     │  │                          │
+        │   • enrich()             │  │ Supports:                │
+        │                          │  │ • Indirection (_token_env)
+        │ MockProvider (offline)   │  │ • Per-workspace override │
+        │ MCPProvider (online)     │  │ • HMAC key management    │
+        └──────────────────────────┘  └──────────────────────────┘
+                       │
+              ┌────────┴────────┐
+              ▼                 ▼
+        ┌──────────────┐  ┌──────────────┐
+        │ MCPClient    │  │ OncallMemory │
+        │ (client.py)  │  │ (store.py)   │
+        ├──────────────┤  ├──────────────┤
+        │ • call_tool()│  │ • add()      │
+        │ • initialize │  │ • recall()   │
+        │ • retry(x3)  │  │ • record()   │
+        │ • pooled HTTP│  │ • stats()    │
+        │   client     │  │              │
+        │              │  │ Features:    │
+        │ Protocol:    │  │ • Frozen     │
+        │ JSON-RPC     │  │   snapshot   │
+        │ Timeout: 120s│  │ • Char limits│
+        │              │  │ • Security   │
+        │              │  │   scanning   │
+        │              │  │ • Semantic   │
+        │              │  │   recall     │
+        │              │  │ • Atomic I/O │
+        │              │  │ • File lock  │
+        └──────────────┘  └──────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       STATE MANAGEMENT & TRACKING                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌──────────────────────────┐        ┌─────────────────────────┐            │
+│  │   Incident State Machine │        │  Execution Tracing      │            │
+│  │   (incident.py)          │        │  (trace.py)             │            │
+│  ├──────────────────────────┤        ├─────────────────────────┤            │
+│  │ States:                  │        │ RunTrace:               │            │
+│  │ new                      │        │ • run_id, signal_name   │            │
+│  │  ↓                       │        │ • started_at/completed  │            │
+│  │ triaged                  │        │ • steps: [StepTrace]    │            │
+│  │  ↓                       │        │ • duration_ms, status   │            │
+│  │ acknowledged             │        │ • error (if failed)     │            │
+│  │  ↓                       │        │                         │            │
+│  │ mitigated                │        │ StepTrace:              │            │
+│  │  ↓                       │        │ • name (triage/wow/..)  │            │
+│  │ resolved                 │        │ • result_summary        │            │
+│  │  ⟲                       │        │ • error (if failed)     │            │
+│  │ escalated (any ← any)   │        │                         │            │
+│  │                          │        │ JSON-serializable       │            │
+│  │ Transitions:             │        │ (exposed in /runs/...)  │            │
+│  │ • Validated              │        │                         │            │
+│  │ • Logged                 │        │ Module-level registry:  │            │
+│  │ • Timestamp + actor      │        │ _incidents[run_id]      │            │
+│  └──────────────────────────┘        └─────────────────────────┘            │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     SUPPORTING SERVICES                                       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌────────────────────┐  ┌────────────────────┐  ┌─────────────────────┐   │
+│  │ CLI (cli.py)       │  │ Workspaces         │  │ Logging             │   │
+│  ├────────────────────┤  │ (workspace.py)     │  │ (logging_config.py) │   │
+│  │ oncall login       │  ├────────────────────┤  ├─────────────────────┤   │
+│  │ oncall serve       │  │ • soul.md          │  │ JSON formatter      │   │
+│  │ oncall chat        │  │ • memory.md        │  │ run_id correlation  │   │
+│  │ oncall ws create   │  │ • config.json      │  │ contextvars         │   │
+│  │ oncall ws use      │  │                    │  │ structured logs     │   │
+│  │ oncall config      │  │ WorkspaceManager:  │  │                     │   │
+│  │ oncall status      │  │ • list()           │  │ Helpers:            │   │
+│  │                    │  │ • create()         │  │ • log_step_event()  │   │
+│  └────────────────────┘  │ • get_active()     │  │ • run_id_scope()    │   │
+│                          │ • set_active()     │  │                     │   │
+│  ┌────────────────────┐  │ • delete()         │  │ Output: stdout      │   │
+│  │ GitHub Copilot    │  └────────────────────┘  └─────────────────────┘   │
+│  │ (copilot_proxy.py)│                                                      │
+│  ├────────────────────┤  ┌────────────────────┐                            │
+│  │ Device code auth   │  │ Parsing Utils      │                            │
+│  │ Token refresh      │  │ (parsing.py)       │                            │
+│  │ Chat completion    │  ├────────────────────┤                            │
+│  │ Streaming API      │  │ • parse_mcp_text() │                            │
+│  │ Keyring storage    │  │ • parse_wow_      │                            │
+│  │                    │  │   metrics()        │                            │
+│  │ OpenAI-compatible  │  │ • ParseError       │                            │
+│  │ endpoint via proxy │  │                    │                            │
+│  └────────────────────┘  └────────────────────┘                            │
+│                                                                               │
+│  ┌────────────────────┐  ┌────────────────────┐                            │
+│  │ Routing            │  │ Adaptive Cards     │                            │
+│  │ (routing.py)       │  │ (cards/adaptive.py)│                            │
+│  ├────────────────────┤  ├────────────────────┤                            │
+│  │ signal_name → team │  │ v1.4 Adaptive Card │                            │
+│  │ keyword matching   │  │ • Severity color   │                            │
+│  │ (case-insensitive) │  │ • Summary text     │                            │
+│  │                    │  │ • Triage verdict   │                            │
+│  │ Example:           │  │ • WoW trend        │                            │
+│  │ "Edge" → client-   │  │ • Action buttons   │                            │
+│  │          team      │  │   (ack/escalate)   │                            │
+│  │ "CPU"  → infra-    │  │                    │                            │
+│  │          team      │  │ Used by: Teams msg │                            │
+│  │                    │  │ endpoint           │                            │
+│  └────────────────────┘  └────────────────────┘                            │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+DATA FLOW SUMMARY:
+═════════════════════════════════════════════════════════════════════════════
+
+HTTP Trigger (natural language)
+    │
+    ├──→ Intent Extraction (LLM)
+    │    └──→ Structured: {signal_name, repo, teams_channel, ...}
+    │
+    └──→ Orchestrator.run()
+         │
+         ├──→ Step 1: Triage (ADX via MCP)
+         │    Output: {verdict, platform_breakdown}
+         │
+         ├──→ Step 2: WoW (ADX + GitHub via MCP)
+         │    Output: {current_count, delta, trend, recent_changes}
+         │
+         ├──→ Memory.recall(signal_name)
+         │    Returns: Similar past incidents (Jaccard similarity)
+         │
+         ├──→ Step 3: Reason (LLM)
+         │    Input: Step 1 + Step 2 + Memory context
+         │    Output: {summary, severity, actions}
+         │
+         ├──→ Memory.record() + Memory.add()
+         │    Persist: incidents, patterns, wow_comparisons
+         │
+         └──→ Teams.send_message() (optional)
+              Card: Adaptive Card with Ack/Escalate buttons
+
+
+STORAGE & PERSISTENCE:
+════════════════════════════════════════════════════════════════════════════
+
+Memory (JSON):
+  ~/.oncall/memory.json
+    ├─ incidents [4000 chars]
+    ├─ patterns [2000 chars]
+    ├─ runbooks [2000 chars]
+    └─ wow_comparisons [1500 chars]
+    Total: 10,000 chars max
+    Auto-eviction: Oldest entries first
+
+Workspace (Markdown + JSON):
+  ~/.oncall/workspaces/{name}/
+    ├─ soul.md (project identity + escalation rules)
+    ├─ memory.md (auto-updated by agent)
+    └─ config.json (workspace-specific overrides)
+
+Active Workspace:
+  ~/.oncall/active_workspace (single file, workspace name)
+
+Credentials:
+  OS Keyring (preferred) → ~/.oncall/copilot_credentials.json (fallback)
+  ~/.oncall/.env (secrets, loaded first)
+  ~/.oncall/config.json (config)
+
+
+ERROR HANDLING:
+═════════════════════════════════════════════════════════════════════════════
+
+OncallError (base)
+  ├─ TriageError ─────────→ Step 1 failure (ADX query, parsing)
+  ├─ WoWError ────────────→ Step 2 failure (metrics, GitHub)
+  ├─ ReasoningError ──────→ Step 3 failure (LLM, Teams send)
+  └─ MCPError ────────────→ Transport-level MCP failure
+
+Per-step wrapping: Allows orchestrator to aggregate errors without losing context
+Retry logic: MCP client retries transient errors (5xx, timeout) 3 times (1s/2s/4s)
+

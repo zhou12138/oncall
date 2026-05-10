@@ -1,0 +1,4 @@
+{"t": 1778390640.4809384, "l": "[start] starting task 'Add REQCandidate data model and governance.yaml pm section' (role=developer)"}
+{"t": 1778390640.4812932, "l": "[adapter] dispatching to ClaudeCodeAdapter"}
+{"t": 1778390736.8654528, "l": "[state] \u2192 done"}
+{"t": 1778390736.8656995, "l": "[output] Everything loads cleanly. Here's a summary of every change made:\n\n---\n\n### Changes\n\n#### `src/coagents/pm_agent.py`\nAdded **`REQCandidate`** Pydantic model (before `FailedTaskEntry`) with all eight re"}

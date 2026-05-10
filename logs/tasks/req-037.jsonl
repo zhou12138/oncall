@@ -1,0 +1,12 @@
+{"t": 1778390310.401818, "l": "[quality] Running gates: ['pytest', 'frontend_build']"}
+{"t": 1778390313.1605885, "l": "[quality] pytest: \u2705 pass"}
+{"t": 1778390313.1607616, "l": "[quality] pytest output: self = PosixPath('/tmp/pytest-of-azureuser/pytest-134/test_decompose_item_with_json_0/board.yaml')\nmode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None\n\n    def open(self, mode='r', buffering=-1, encoding=None,\n             errors=None, newline=None):\n        \"\"\"\n        Op"}
+{"t": 1778390313.160831, "l": "[quality] frontend_build: \u2705 pass"}
+{"t": 1778390313.1611202, "l": "[quality] All gates passed \u2705"}
+{"t": 1778390313.1613655, "l": "[acceptance] Running checks: ['pytest', 'frontend_build']"}
+{"t": 1778390315.562496, "l": "[acceptance] pytest: \u2705 pass"}
+{"t": 1778390315.5626829, "l": "[acceptance] pytest output: self = PosixPath('/tmp/pytest-of-azureuser/pytest-135/test_decompose_item_with_json_0/board.yaml')\nmode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None\n\n    def open(self, mode='r', buffering=-1, encoding=None,\n             errors=None, newline=None):\n        \"\"\"\n        Op"}
+{"t": 1778390315.562751, "l": "[acceptance] frontend_build: \u2705 pass"}
+{"t": 1778390315.563052, "l": "[acceptance] All checks passed \u2705"}
+{"t": 1778390315.563431, "l": "[review] Starting dual-agent review (Opus)"}
+{"t": 1778390319.9987738, "l": "[review] Review adapter failed, auto-approved"}

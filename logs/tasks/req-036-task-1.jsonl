@@ -1,0 +1,4 @@
+{"t": 1778388729.0948834, "l": "[start] starting task 'Add `source` field to BoardItem model in board.py' (role=developer)"}
+{"t": 1778388729.095223, "l": "[adapter] dispatching to ClaudeCodeAdapter"}
+{"t": 1778388752.3042305, "l": "[state] \u2192 done"}
+{"t": 1778388752.304386, "l": "[output] Both changes are done:\n\n- **`src/coagents/board.py`**: Added `source: str = \"human\"` to the `BoardItem` model, just before the `enabled` field. Pydantic will handle serialization/deserialization with "}

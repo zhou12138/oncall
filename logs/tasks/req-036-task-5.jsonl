@@ -1,0 +1,4 @@
+{"t": 1778389119.667586, "l": "[start] starting task 'Show \ud83e\udd16 icon for auto-fix items in BoardCard.tsx' (role=developer)"}
+{"t": 1778389119.6677892, "l": "[adapter] dispatching to ClaudeCodeAdapter"}
+{"t": 1778389158.137994, "l": "[state] \u2192 done"}
+{"t": 1778389158.1381717, "l": "[output] Both files are updated:\n\n- **`BoardCard.tsx`** \u2014 After the Bug/Task type badge, renders a `\ud83e\udd16` badge (violet, with `title=\"Auto-generated\"`) when `item.source === 'auto'`.\n- **`BoardItemDetail.tsx`** \u2014"}

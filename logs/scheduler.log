@@ -1,0 +1,534 @@
+2026-05-10 03:55:53,198 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=300s)
+2026-05-10 03:55:53,203 INFO coagents.board_orchestrator: Auto-picked REQ-001: Analyze OnCall-Agent codebase and create development backlog (priority=high)
+2026-05-10 03:55:53,210 INFO coagents.board_scheduler: Fired 1 items: ['REQ-001']
+2026-05-10 03:55:53,210 INFO coagents.board_scheduler: Firing REQ-001: Analyze OnCall-Agent codebase and create development backlog (cron: )
+2026-05-10 04:01:00,396 INFO coagents.multi_scheduler: Starting scheduler for project: CoAgents
+2026-05-10 04:01:00,397 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=60s)
+2026-05-10 04:01:00,500 INFO coagents.board_scheduler: Stale execution for REQ-032 (started 2026-05-10 03:30:02.311020, past timeout) — allowing re-fire
+2026-05-10 04:01:00,501 INFO coagents.board_scheduler: Fired 1 items: ['REQ-032']
+2026-05-10 04:01:00,501 INFO coagents.multi_scheduler: Starting scheduler for project: AI-Agent
+2026-05-10 04:01:00,502 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=300s)
+2026-05-10 04:01:00,516 INFO coagents.board_scheduler: Fired 1 items: ['REQ-003']
+2026-05-10 04:01:00,517 INFO coagents.multi_scheduler: Starting scheduler for project: OnCall-Agent
+2026-05-10 04:01:00,517 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=300s)
+2026-05-10 04:01:00,523 INFO coagents.board_scheduler: Firing REQ-032: board看板  complete状态 req 使用倒序排列 (cron: )
+2026-05-10 04:01:00,552 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-032 — board看板  complete状态 req 使用倒序排列
+2026-05-10 04:01:00,674 INFO coagents.board_scheduler: Firing REQ-003: Agent工具执行结果的安全沙箱 (cron: )
+2026-05-10 04:01:00,680 INFO coagents.multi_scheduler: [AI-Agent] Processing: REQ-003 — Agent工具执行结果的安全沙箱
+2026-05-10 04:06:00,780 WARNING coagents.board_orchestrator: Decomposition failed for REQ-003: Timed out after 300s
+2026-05-10 04:06:00,832 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 1 task(s) to plan.yaml: ['REQ-003-task-1']
+2026-05-10 04:06:00,832 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-003 (planning→active): ['REQ-003-task-1']
+2026-05-10 04:06:00,863 INFO coagents.board_orchestrator: [task_ids] Verified: REQ-003.task_ids correctly persisted as ['REQ-003-task-1']
+2026-05-10 04:06:00,863 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-003 into 1 tasks — stored task_ids=['REQ-003-task-1']
+2026-05-10 04:06:01,180 WARNING coagents.board_orchestrator: Decomposition failed for REQ-032: Timed out after 300s
+2026-05-10 04:06:01,562 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-032 (already active): ['REQ-032-task-1']
+2026-05-10 04:06:02,012 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-032 into 1 tasks — stored task_ids=['REQ-032-task-1']
+2026-05-10 04:11:27,501 INFO coagents.board_orchestrator: Task REQ-032-task-1 succeeded: 已完成！以下是所做的修改：
+
+**问题分析：**  
+Board 看板 `completed` 列中，所有 req 的 `completed_at` 字段都为 `null`，导致之前的倒序排列代码（按 `completed_at` 排序）失效 —— 所有 item 都被视为时间 `0`，顺序随机。
+
+**修复内容（`web/src/pages/Board.tsx`）：**
+
+```tsx
+// 修
+2026-05-10 04:11:27,501 ERROR coagents.board_orchestrator: Error processing board item REQ-032
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:11:27,503 INFO coagents.multi_scheduler: [CoAgents] Failed: REQ-032 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:11:27,546 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-032
+2026-05-10 04:13:42,085 INFO coagents.board_orchestrator: Task REQ-003-task-1 succeeded: Everything is wired up correctly. Here's a summary of everything that was implemented:
+
+---
+
+## 实现概述：shell_execute 安全沙箱
+
+### 新增文件
+
+#### `skills/sandbox.js` — 核心沙箱模块
+五层防护机制：
+
+| 层级 | 防护内容 | 示例 |
+|------
+2026-05-10 04:13:42,085 ERROR coagents.board_orchestrator: Error processing board item REQ-003
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:13:42,087 INFO coagents.multi_scheduler: [AI-Agent] Failed: REQ-003 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:13:42,094 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-003
+2026-05-10 04:15:02,115 INFO coagents.board_scheduler: Fired 1 items: ['REQ-032']
+2026-05-10 04:15:02,115 INFO coagents.board_scheduler: Firing REQ-032: board看板  complete状态 req 使用倒序排列 (cron: )
+2026-05-10 04:15:02,148 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-032 — board看板  complete状态 req 使用倒序排列
+2026-05-10 04:16:00,771 INFO coagents.board_scheduler: Fired 1 items: ['REQ-003']
+2026-05-10 04:16:00,775 INFO coagents.board_scheduler: Firing REQ-003: Agent工具执行结果的安全沙箱 (cron: )
+2026-05-10 04:16:00,778 INFO coagents.multi_scheduler: [AI-Agent] Processing: REQ-003 — Agent工具执行结果的安全沙箱
+2026-05-10 04:18:21,569 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 5 task(s) to plan.yaml: ['REQ-003-task-2', 'REQ-003-task-3', 'REQ-003-task-4', 'REQ-003-task-5', 'REQ-003-task-6']
+2026-05-10 04:18:21,569 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-003 (already active): ['REQ-003-task-1', 'REQ-003-task-2', 'REQ-003-task-3', 'REQ-003-task-4', 'REQ-003-task-5', 'REQ-003-task-6']
+2026-05-10 04:18:21,580 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-003 into 6 tasks — stored task_ids=['REQ-003-task-1', 'REQ-003-task-2', 'REQ-003-task-3', 'REQ-003-task-4', 'REQ-003-task-5', 'REQ-003-task-6']
+2026-05-10 04:18:40,344 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 1 task(s) to plan.yaml: ['REQ-032-task-3']
+2026-05-10 04:18:40,345 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-032 (planning→active): ['REQ-032-task-1', 'REQ-032-task-2', 'REQ-032-task-3']
+2026-05-10 04:18:40,529 INFO coagents.board_orchestrator: [task_ids] Verified: REQ-032.task_ids correctly persisted as ['REQ-032-task-1', 'REQ-032-task-2', 'REQ-032-task-3']
+2026-05-10 04:18:40,530 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-032 into 3 tasks — stored task_ids=['REQ-032-task-1', 'REQ-032-task-2', 'REQ-032-task-3']
+2026-05-10 04:18:55,894 INFO coagents.board_orchestrator: Task REQ-032-task-1 succeeded: The `list_items()` method in `board.py` has been updated with the following changes:
+
+- **New `order` parameter** — optional string that can be passed explicitly (e.g. `order="completed_desc"`) to tri
+2026-05-10 04:19:25,148 INFO coagents.board_orchestrator: Task REQ-032-task-2 succeeded: Done. The `GET /api/projects/{name}/board` endpoint now explicitly passes `order="completed_desc"` to `list_items()` when `status=completed` is requested:
+
+```python
+order = "completed_desc" if filt =
+2026-05-10 04:19:37,634 INFO coagents.board_orchestrator: Task REQ-032-task-3 succeeded: The `columnItems()` function already has the correct implementation:
+
+- When `status === 'completed'`, it sorts by `completed_at` descending (`bTime - aTime`), falling back to `created_at` if `complet
+2026-05-10 04:19:37,634 ERROR coagents.board_orchestrator: Error processing board item REQ-032
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:19:37,635 INFO coagents.multi_scheduler: [CoAgents] Failed: REQ-032 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:19:37,679 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-032
+2026-05-10 04:20:02,448 INFO coagents.board_scheduler: Fired 1 items: ['REQ-032']
+2026-05-10 04:20:02,448 INFO coagents.board_scheduler: Firing REQ-032: board看板  complete状态 req 使用倒序排列 (cron: )
+2026-05-10 04:20:02,468 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-032 — board看板  complete状态 req 使用倒序排列
+2026-05-10 04:20:36,689 INFO coagents.board_orchestrator: Task REQ-003-task-1 succeeded: 审计报告已生成：`skills/sandbox-audit-report.md`
+
+---
+
+## 审计摘要
+
+通过对 `sandbox.js`（333行）和 `sandbox-config.json` 的完整分析，梳理出以下关键发现：
+
+### 五层机制现状
+
+| 层级 | 机制 | 状态 |
+|------|------|------|
+| Layer 1 | 黑名单（14项） | ⚠️ 缺失
+2026-05-10 04:25:02,611 WARNING coagents.board_orchestrator: Decomposition failed for REQ-032: Timed out after 300s
+2026-05-10 04:25:02,706 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-032 (already active): ['REQ-032-task-1']
+2026-05-10 04:25:02,789 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-032 into 1 tasks — stored task_ids=['REQ-032-task-1']
+2026-05-10 04:25:29,474 INFO coagents.board_orchestrator: Task REQ-003-task-2 succeeded: 全部修改完成，21 个测试用例全部通过。以下是本次变更的完整说明：
+
+---
+
+## 变更总结
+
+### `skills/sandbox-config.json` — 扩展黑名单与检测规则
+
+**`blockedExecutables` 新增 34 项：**
+
+| 类别 | 新增可执行文件 |
+|---|---|
+| 网络侦察 | `nmap`, `masscan`, `tcpdump`, `ts
+2026-05-10 04:26:00,862 INFO coagents.board_scheduler: Stale execution for REQ-001 (started 2026-05-10 03:55:53.211089, past timeout) — allowing re-fire
+2026-05-10 04:26:00,862 INFO coagents.board_scheduler: Fired 1 items: ['REQ-001']
+2026-05-10 04:26:00,862 INFO coagents.board_scheduler: Firing REQ-001: Analyze OnCall-Agent codebase and create development backlog (cron: )
+2026-05-10 04:26:00,864 INFO coagents.multi_scheduler: [OnCall-Agent] Processing: REQ-001 — Analyze OnCall-Agent codebase and create development backlog
+2026-05-10 04:28:02,493 INFO coagents.board_orchestrator: Task REQ-003-task-3 succeeded: 全部 31 个测试用例通过。以下是本次改动的完整说明：
+
+---
+
+## 改动摘要
+
+### `sandbox.js` — 核心变更
+
+#### 1. 硬编码危险 CWD 前缀（`BLOCKED_CWD_PREFIXES`）
+新增一个**任何策略下均不可绕过**的黑名单数组，涵盖：
+```
+/etc  /proc  /sys  /dev  /boot  /root
+/var/spool/cron 
+2026-05-10 04:31:00,948 WARNING coagents.board_orchestrator: Decomposition failed for REQ-001: Timed out after 300s
+2026-05-10 04:31:00,956 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 1 task(s) to plan.yaml: ['REQ-001-task-1']
+2026-05-10 04:31:00,957 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-001 (already active): ['REQ-001-task-1']
+2026-05-10 04:31:00,961 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-001 into 1 tasks — stored task_ids=['REQ-001-task-1']
+2026-05-10 04:31:50,145 INFO coagents.board_orchestrator: Task REQ-032-task-1 succeeded: The `columnItems` function with the completed sort **is already in the committed HEAD**. The feature is already implemented correctly — the `completed` column sorts by `completed_at` descending (newes
+2026-05-10 04:31:50,145 ERROR coagents.board_orchestrator: Error processing board item REQ-032
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:31:50,147 INFO coagents.multi_scheduler: [CoAgents] Failed: REQ-032 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:31:50,202 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-032
+2026-05-10 04:32:04,752 INFO coagents.board_scheduler: Fired 1 items: ['REQ-032']
+2026-05-10 04:32:04,753 INFO coagents.board_scheduler: Firing REQ-032: board看板  complete状态 req 使用倒序排列 (cron: )
+2026-05-10 04:32:04,927 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-032 — board看板  complete状态 req 使用倒序排列
+2026-05-10 04:34:52,358 INFO coagents.board_orchestrator: Task REQ-003-task-4 succeeded: Everything looks good. Here's a summary of what was done:
+
+---
+
+## 变更说明
+
+### `skills/sandbox.js` — 新增 `filterSensitiveOutput()`
+
+在现有 `truncateOutput()` 之后新增了一个完整的敏感信息过滤函数，覆盖以下 **25 条规则**：
+
+| 类别 | 过滤内容
+2026-05-10 04:37:03,624 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-032 (already active): ['REQ-032-task-1', 'REQ-032-task-2']
+2026-05-10 04:37:03,906 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-032 into 2 tasks — stored task_ids=['REQ-032-task-1', 'REQ-032-task-2']
+2026-05-10 04:37:15,532 INFO coagents.board_orchestrator: Task REQ-032-task-1 succeeded: The sorting logic is already implemented in `list_items()` (lines 163–169). The task is already done — the code sorts completed items by `completed_at` (falling back to `created_at`) in descending ord
+2026-05-10 04:37:25,341 INFO coagents.board_orchestrator: Task REQ-032-task-2 succeeded: The `columnItems` function already has the correct implementation with the sorting logic. The file already contains exactly what was requested:
+
+- Lines 83–97: `columnItems` checks `status === 'comple
+2026-05-10 04:37:25,341 ERROR coagents.board_orchestrator: Error processing board item REQ-032
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:37:25,343 INFO coagents.multi_scheduler: [CoAgents] Failed: REQ-032 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:37:25,400 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-032
+2026-05-10 04:38:05,340 INFO coagents.board_orchestrator: Task REQ-003-task-5 succeeded: 所有验证通过，结果完全符合预期。下面是变更摘要：
+
+---
+
+## 变更说明
+
+### `sandbox.js`
+
+#### 1. 差异化超时配置（`DEFAULT_CONFIG` 新增字段）
+
+| 字段 | 说明 |
+|------|------|
+| `maxTimeoutMs` | 保留，作为**兜底超时**（未匹配任何档位时使用），默认 120 秒 |
+| `timeoutProfiles
+2026-05-10 04:38:05,787 INFO coagents.board_scheduler: Fired 1 items: ['REQ-032']
+2026-05-10 04:38:05,788 INFO coagents.board_scheduler: Firing REQ-032: board看板  complete状态 req 使用倒序排列 (cron: )
+2026-05-10 04:38:05,888 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-032 — board看板  complete状态 req 使用倒序排列
+2026-05-10 04:43:06,231 WARNING coagents.board_orchestrator: Decomposition failed for REQ-032: Timed out after 300s
+2026-05-10 04:43:06,476 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-032 (already active): ['REQ-032-task-1']
+2026-05-10 04:43:06,648 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-032 into 1 tasks — stored task_ids=['REQ-032-task-1']
+2026-05-10 04:44:47,432 INFO coagents.board_orchestrator: Task REQ-001-task-1 succeeded: The backlog has been created at `/home/azureuser/oncall/BACKLOG.md`. Here's a summary of what was produced:
+
+---
+
+## OnCall-Agent Development Backlog — 34 Items
+
+After reading every source file in the
+2026-05-10 04:44:47,433 ERROR coagents.board_orchestrator: Error processing board item REQ-001
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:44:47,435 INFO coagents.multi_scheduler: [OnCall-Agent] Failed: REQ-001 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:44:47,438 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-001
+2026-05-10 04:45:08,755 INFO coagents.board_orchestrator: Task REQ-003-task-6 succeeded: 所有 287 个断言全部通过。以下是本次工作的总结：
+
+---
+
+## 完成情况
+
+### 新建文件：`sandbox-escape.test.js`
+
+包含 **14 个测试分组，287 个断言**，完整覆盖沙箱逃逸场景：
+
+| 分组 | 攻击类型 | 用例数 |
+|------|----------|--------|
+| 1 | **反弹 Shell** — `/dev/tcp`、`/dev
+2026-05-10 04:45:08,755 ERROR coagents.board_orchestrator: Error processing board item REQ-003
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self._governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:45:08,757 INFO coagents.multi_scheduler: [AI-Agent] Failed: REQ-003 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:45:08,764 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-003
+2026-05-10 04:46:01,173 INFO coagents.board_scheduler: Stale execution for REQ-001 (started 2026-05-10 03:54:05.402999, past timeout) — allowing re-fire
+2026-05-10 04:46:01,173 INFO coagents.board_scheduler: Fired 1 items: ['REQ-001']
+2026-05-10 04:46:01,177 INFO coagents.board_scheduler: Fired 1 items: ['REQ-001']
+2026-05-10 04:46:01,177 INFO coagents.board_scheduler: Firing REQ-001: RAG增强对话：检索相关文档块后再调用LLM (cron: )
+2026-05-10 04:46:01,180 INFO coagents.multi_scheduler: [AI-Agent] Processing: REQ-001 — RAG增强对话：检索相关文档块后再调用LLM
+2026-05-10 04:46:01,197 INFO coagents.board_scheduler: Firing REQ-001: Analyze OnCall-Agent codebase and create development backlog (cron: )
+2026-05-10 04:46:01,200 INFO coagents.multi_scheduler: [OnCall-Agent] Processing: REQ-001 — Analyze OnCall-Agent codebase and create development backlog
+2026-05-10 04:47:41,089 INFO coagents.board_orchestrator: Task REQ-032-task-1 succeeded: The code is already implemented correctly. Both frontend (Board.tsx) and backend (board.py) already sort completed items in descending order (newest first). The feature is fully working.
+
+The task has
+2026-05-10 04:47:41,090 ERROR coagents.board_orchestrator: Error processing board item REQ-032
+Traceback (most recent call last):
+  File "/home/azureuser/CoAgents/src/coagents/board_orchestrator.py", line 360, in process_item
+    gates = self.governance.quality_gates
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'BoardOrchestrator' object has no attribute '_governance'. Did you mean: 'governance'?
+2026-05-10 04:47:41,092 INFO coagents.multi_scheduler: [CoAgents] Failed: REQ-032 — 'BoardOrchestrator' object has no attribute '_governance'
+2026-05-10 04:47:41,194 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-032
+2026-05-10 04:48:07,511 INFO coagents.board_scheduler: Fired 1 items: ['REQ-032']
+2026-05-10 04:48:07,512 INFO coagents.board_scheduler: Firing REQ-032: board看板  complete状态 req 使用倒序排列 (cron: )
+2026-05-10 04:48:07,535 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-032 — board看板  complete状态 req 使用倒序排列
+2026-05-10 04:50:23,126 INFO coagents.multi_scheduler: Starting scheduler for project: CoAgents
+2026-05-10 04:50:23,126 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=60s)
+2026-05-10 04:50:23,299 INFO coagents.board_scheduler: Fired 1 items: ['REQ-036']
+2026-05-10 04:50:23,299 INFO coagents.multi_scheduler: Starting scheduler for project: AI-Agent
+2026-05-10 04:50:23,299 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=300s)
+2026-05-10 04:50:23,314 INFO coagents.board_scheduler: Fired 1 items: ['REQ-003']
+2026-05-10 04:50:23,314 INFO coagents.multi_scheduler: Starting scheduler for project: OnCall-Agent
+2026-05-10 04:50:23,315 INFO coagents.board_scheduler: BoardScheduler started (max_concurrent=1, tick=300s)
+2026-05-10 04:50:23,320 INFO coagents.board_scheduler: Firing REQ-036: Phase2.1: 验收失败自动生成修复REQ (cron: )
+2026-05-10 04:50:23,364 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-036 — Phase2.1: 验收失败自动生成修复REQ
+2026-05-10 04:50:23,650 INFO coagents.board_scheduler: Firing REQ-003: Agent工具执行结果的安全沙箱 (cron: )
+2026-05-10 04:50:23,655 INFO coagents.multi_scheduler: [AI-Agent] Processing: REQ-003 — Agent工具执行结果的安全沙箱
+2026-05-10 04:52:08,381 INFO coagents.token_tracker: [token] REQ-036-decompose/execute: 9577 in + 1305 out = 10882 tokens ($0.0483)
+2026-05-10 04:52:08,659 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 6 task(s) to plan.yaml: ['REQ-036-task-1', 'REQ-036-task-2', 'REQ-036-task-3', 'REQ-036-task-4', 'REQ-036-task-5', 'REQ-036-task-6']
+2026-05-10 04:52:08,660 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-036 (planning→active): ['REQ-036-task-1', 'REQ-036-task-2', 'REQ-036-task-3', 'REQ-036-task-4', 'REQ-036-task-5', 'REQ-036-task-6']
+2026-05-10 04:52:09,089 INFO coagents.board_orchestrator: [task_ids] Verified: REQ-036.task_ids correctly persisted as ['REQ-036-task-1', 'REQ-036-task-2', 'REQ-036-task-3', 'REQ-036-task-4', 'REQ-036-task-5', 'REQ-036-task-6']
+2026-05-10 04:52:09,090 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-036 into 6 tasks — stored task_ids=['REQ-036-task-1', 'REQ-036-task-2', 'REQ-036-task-3', 'REQ-036-task-4', 'REQ-036-task-5', 'REQ-036-task-6']
+2026-05-10 04:52:32,303 INFO coagents.token_tracker: [token] REQ-036-task-1/execute: 9330 in + 749 out = 10079 tokens ($0.0392)
+2026-05-10 04:52:32,304 INFO coagents.board_orchestrator: Task REQ-036-task-1 succeeded: Both changes are done:
+
+- **`src/coagents/board.py`**: Added `source: str = "human"` to the `BoardItem` model, just before the `enabled` field. Pydantic will handle serialization/deserialization with 
+2026-05-10 04:53:17,405 INFO coagents.token_tracker: [token] REQ-036-task-2/execute: 7587 in + 853 out = 8440 tokens ($0.0356)
+2026-05-10 04:53:17,406 INFO coagents.board_orchestrator: Task REQ-036-task-2 succeeded: Done. Here's what was changed:
+
+**`governance.yaml`** — added `max_auto_fix_retries: 2` under the `scheduler:` section (alongside the existing `max_retries`):
+```yaml
+scheduler:
+  ...
+  max_auto_fix_r
+2026-05-10 04:54:43,463 INFO coagents.token_tracker: [token] REQ-003-decompose/execute: 4813 in + 971 out = 5784 tokens ($0.0290)
+2026-05-10 04:54:43,534 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-003 (already active): ['REQ-003-task-1', 'REQ-003-task-2', 'REQ-003-task-3', 'REQ-003-task-4', 'REQ-003-task-5']
+2026-05-10 04:54:43,565 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-003 into 5 tasks — stored task_ids=['REQ-003-task-1', 'REQ-003-task-2', 'REQ-003-task-3', 'REQ-003-task-4', 'REQ-003-task-5']
+2026-05-10 04:55:46,956 INFO coagents.token_tracker: [token] REQ-003-task-1/execute: 8993 in + 2469 out = 11462 tokens ($0.0640)
+2026-05-10 04:55:46,957 INFO coagents.board_orchestrator: Task REQ-003-task-1 succeeded: The fix is complete. Here's a summary of every change made:
+
+---
+
+## 修改摘要
+
+### 文件：`src/coagents/quality_gate.py`
+
+#### 1. 新增 `import shlex`
+用于安全地将命令字符串拆分为参数列表，替代 shell 解析。
+
+#### 2. 新增命令白名单 `ALLOWED_CO
+2026-05-10 04:56:49,523 INFO coagents.token_tracker: [token] REQ-003-task-2/execute: 10607 in + 2683 out = 13290 tokens ($0.0721)
+2026-05-10 04:56:49,523 INFO coagents.board_orchestrator: Task REQ-003-task-2 succeeded: All tests pass. Here's a summary of the changes made to `src/coagents/config.py`:
+
+---
+
+## 变更说明
+
+### 新增：`import re`
+顶部新增 `import re`，用于编译正则表达式。
+
+### 新增：`_SHELL_METACHAR_RE`（正则常量）
+```python
+_SHELL_META
+2026-05-10 04:57:59,954 INFO coagents.token_tracker: [token] REQ-036-task-3/execute: 27175 in + 10911 out = 38086 tokens ($0.2452)
+2026-05-10 04:57:59,955 INFO coagents.board_orchestrator: Task REQ-036-task-3 succeeded: Both files parse cleanly. Here's a summary of what was implemented:
+
+---
+
+## Changes Made
+
+### `src/coagents/board.py`
+- Extended `add_item()` with two new optional parameters:
+  - `item_id: str | Non
+2026-05-10 04:58:39,666 INFO coagents.token_tracker: [token] REQ-036-task-4/execute: 8513 in + 1485 out = 9998 tokens ($0.0478)
+2026-05-10 04:58:39,667 INFO coagents.board_orchestrator: Task REQ-036-task-4 succeeded: The change is clean and correct. Here's a summary of what was done:
+
+**`src/coagents/board.py` — `ProjectBoard.add_item()`**
+
+Added an `id: str | None = None` parameter (the one requested by the task)
+2026-05-10 04:58:49,918 INFO coagents.token_tracker: [token] REQ-003-task-3/execute: 19927 in + 5199 out = 25126 tokens ($0.1378)
+2026-05-10 04:58:49,919 INFO coagents.board_orchestrator: Task REQ-003-task-3 succeeded: 43/44 pass. The one pre-existing failure (`test_execute_task_max_turns_fail`) is unrelated to the task — it was failing before my changes (the stop_reason `"error_max_turns"` doesn't match the `"error
+2026-05-10 04:59:18,137 INFO coagents.token_tracker: [token] REQ-036-task-5/execute: 13733 in + 1672 out = 15405 tokens ($0.0663)
+2026-05-10 04:59:18,138 INFO coagents.board_orchestrator: Task REQ-036-task-5 succeeded: Both files are updated:
+
+- **`BoardCard.tsx`** — After the Bug/Task type badge, renders a `🤖` badge (violet, with `title="Auto-generated"`) when `item.source === 'auto'`.
+- **`BoardItemDetail.tsx`** —
+2026-05-10 05:00:23,102 INFO coagents.token_tracker: [token] REQ-003-task-4/execute: 13216 in + 5584 out = 18800 tokens ($0.1234)
+2026-05-10 05:00:23,102 INFO coagents.board_orchestrator: Task REQ-003-task-4 succeeded: Both files look correct. Here's a summary of everything that was done:
+
+---
+
+## 实现摘要
+
+### 新建：`src/coagents/sandbox.py`
+
+提供通用命令沙箱能力，核心 API：
+
+| 符号 | 类型 | 说明 |
+|---|---|---|
+| `SandboxResult` | dataclass
+2026-05-10 05:02:00,317 INFO coagents.token_tracker: [token] REQ-036-task-6/execute: 40390 in + 8047 out = 48437 tokens ($0.2419)
+2026-05-10 05:02:00,317 INFO coagents.board_orchestrator: Task REQ-036-task-6 succeeded: The 3 pre-existing failures are unrelated to my changes (they were already failing before — they involve `test_decompose_item_*` which call `copy.copy(adapter)` on a FakeAdapter and then set `.allowed
+2026-05-10 05:02:00,318 INFO coagents.board_orchestrator: Running quality gates for REQ-036: ['pytest', 'frontend_build']
+2026-05-10 05:02:03,152 INFO coagents.board_orchestrator: All quality gates passed for REQ-036
+2026-05-10 05:02:03,153 INFO coagents.board_orchestrator: Running acceptance checks for REQ-036: ['pytest', 'frontend_build']
+2026-05-10 05:02:05,577 INFO coagents.board_orchestrator: All acceptance checks passed for REQ-036
+2026-05-10 05:02:05,578 INFO coagents.board_orchestrator: Running review for REQ-036
+2026-05-10 05:02:06,590 WARNING coagents.board_orchestrator: Review adapter failed for REQ-036, skipping review
+2026-05-10 05:02:06,590 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-036 (→completed): ['REQ-036-task-1', 'REQ-036-task-2', 'REQ-036-task-3', 'REQ-036-task-4', 'REQ-036-task-5', 'REQ-036-task-6']
+2026-05-10 05:02:06,687 INFO coagents.board_orchestrator: Board item REQ-036 completed successfully
+2026-05-10 05:02:06,687 INFO coagents.multi_scheduler: [CoAgents] Completed: REQ-036 (6 tasks)
+2026-05-10 05:02:06,744 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-036
+2026-05-10 05:02:25,552 INFO coagents.board_orchestrator: Auto-picked REQ-037: Phase2.2: PM审计Cron — 每日Sprint报告 (priority=high)
+2026-05-10 05:02:25,622 INFO coagents.board_scheduler: Fired 1 items: ['REQ-037']
+2026-05-10 05:02:25,623 INFO coagents.board_scheduler: Firing REQ-037: Phase2.2: PM审计Cron — 每日Sprint报告 (cron: )
+2026-05-10 05:02:25,666 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-037 — Phase2.2: PM审计Cron — 每日Sprint报告
+2026-05-10 05:03:56,421 INFO coagents.token_tracker: [token] REQ-003-task-5/execute: 19475 in + 7273 out = 26748 tokens ($0.1675)
+2026-05-10 05:03:56,421 INFO coagents.board_orchestrator: Task REQ-003-task-5 succeeded: 全部 **80 个测试，全部通过** ✅，耗时 3.95 秒。
+
+---
+
+## 测试文件概览 — `tests/test_sandbox.py`
+
+文件共 **80 条测试**，按 8 个测试类组织，覆盖沙箱模块的所有关键路径：
+
+| 测试类 | 用例数 | 覆盖内容 |
+|---|---|---|
+| `TestSandboxResult` | 8 | 数据类属性：`.ok`、`.output
+2026-05-10 05:03:56,422 INFO coagents.board_orchestrator: Running quality gates for REQ-003: ['backend_import', 'frontend_build']
+2026-05-10 05:04:06,395 WARNING coagents.board_orchestrator: Quality gates failed for REQ-003: ['backend_import']
+2026-05-10 05:04:06,407 INFO coagents.board_orchestrator: Board item REQ-003 moved to hold due to 1 failed task(s)
+2026-05-10 05:04:06,408 INFO coagents.board_orchestrator: Created bug item REQ-004 for failed item REQ-003
+2026-05-10 05:04:06,408 INFO coagents.multi_scheduler: [AI-Agent] Completed: REQ-003 (5 tasks)
+2026-05-10 05:04:06,415 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-003
+2026-05-10 05:05:23,490 INFO coagents.board_scheduler: Fired 1 items: ['REQ-002']
+2026-05-10 05:05:23,493 INFO coagents.board_scheduler: Firing REQ-002: 对话历史持久化到SQLite (cron: )
+2026-05-10 05:05:23,497 INFO coagents.multi_scheduler: [AI-Agent] Processing: REQ-002 — 对话历史持久化到SQLite
+2026-05-10 05:07:26,189 WARNING coagents.board_orchestrator: Decomposition failed for REQ-037: Timed out after 300s
+2026-05-10 05:07:26,362 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 1 task(s) to plan.yaml: ['REQ-037-task-1']
+2026-05-10 05:07:26,363 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-037 (already active): ['REQ-037-task-1']
+2026-05-10 05:07:26,495 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-037 into 1 tasks — stored task_ids=['REQ-037-task-1']
+2026-05-10 05:10:23,578 WARNING coagents.board_orchestrator: Decomposition failed for REQ-002: Timed out after 300s
+2026-05-10 05:10:23,612 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 1 task(s) to plan.yaml: ['REQ-002-task-1']
+2026-05-10 05:10:23,613 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-002 (planning→active): ['REQ-002-task-1']
+2026-05-10 05:10:23,628 INFO coagents.board_orchestrator: [task_ids] Verified: REQ-002.task_ids correctly persisted as ['REQ-002-task-1']
+2026-05-10 05:10:23,629 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-002 into 1 tasks — stored task_ids=['REQ-002-task-1']
+2026-05-10 05:18:30,400 INFO coagents.token_tracker: [token] REQ-037-task-1/execute: 78325 in + 21188 out = 99513 tokens ($0.5528)
+2026-05-10 05:18:30,401 INFO coagents.board_orchestrator: Task REQ-037-task-1 succeeded: All components are complete and verified. Here's a summary of everything created and modified:
+
+---
+
+## Phase 2.2 — PM Audit Cron: Implementation Complete ✅
+
+### New Files
+
+**`src/coagents/pm_agent.py
+2026-05-10 05:18:30,401 INFO coagents.board_orchestrator: Running quality gates for REQ-037: ['pytest', 'frontend_build']
+2026-05-10 05:18:33,160 INFO coagents.board_orchestrator: All quality gates passed for REQ-037
+2026-05-10 05:18:33,161 INFO coagents.board_orchestrator: Running acceptance checks for REQ-037: ['pytest', 'frontend_build']
+2026-05-10 05:18:35,562 INFO coagents.board_orchestrator: All acceptance checks passed for REQ-037
+2026-05-10 05:18:35,563 INFO coagents.board_orchestrator: Running review for REQ-037
+2026-05-10 05:18:39,998 WARNING coagents.board_orchestrator: Review adapter failed for REQ-037, skipping review
+2026-05-10 05:18:39,998 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-037 (→completed): ['REQ-037-task-1']
+2026-05-10 05:18:40,084 INFO coagents.board_orchestrator: Board item REQ-037 completed successfully
+2026-05-10 05:18:40,085 INFO coagents.multi_scheduler: [CoAgents] Completed: REQ-037 (1 tasks)
+2026-05-10 05:18:40,138 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-037
+2026-05-10 05:19:28,308 INFO coagents.board_scheduler: Fired 1 items: ['REQ-038']
+2026-05-10 05:19:28,308 INFO coagents.board_scheduler: Firing REQ-038: Phase3: PM Agent自主发REQ — 基于VISION.md差距分析 (cron: )
+2026-05-10 05:19:28,360 INFO coagents.multi_scheduler: [CoAgents] Processing: REQ-038 — Phase3: PM Agent自主发REQ — 基于VISION.md差距分析
+2026-05-10 05:20:23,772 INFO coagents.board_scheduler: Stale execution for REQ-001 (started 2026-05-10 04:46:01.197906, past timeout) — allowing re-fire
+2026-05-10 05:20:23,775 INFO coagents.board_scheduler: Fired 1 items: ['REQ-001']
+2026-05-10 05:20:23,775 INFO coagents.board_scheduler: Firing REQ-001: Analyze OnCall-Agent codebase and create development backlog (cron: )
+2026-05-10 05:20:23,780 INFO coagents.multi_scheduler: [OnCall-Agent] Processing: REQ-001 — Analyze OnCall-Agent codebase and create development backlog
+2026-05-10 05:20:38,457 INFO coagents.token_tracker: [token] REQ-002-task-1/execute: 52090 in + 16512 out = 68602 tokens ($0.4039)
+2026-05-10 05:20:38,458 INFO coagents.board_orchestrator: Task REQ-002-task-1 succeeded: All done! Here's a summary of every change made:
+
+---
+
+## 实现方案：对话历史持久化到 SQLite
+
+### 新增文件
+
+**`src/coagents/conversation_store.py`** — SQLite 持久化层  
+采用 **写穿透缓存（write-through cache）** 模式：
+- 数据库文件：`<proje
+2026-05-10 05:20:38,458 INFO coagents.board_orchestrator: Running quality gates for REQ-002: ['backend_import', 'frontend_build']
+2026-05-10 05:20:47,923 WARNING coagents.board_orchestrator: Quality gates failed for REQ-002: ['backend_import']
+2026-05-10 05:20:47,935 INFO coagents.board_orchestrator: Board item REQ-002 moved to hold due to 1 failed task(s)
+2026-05-10 05:20:47,936 INFO coagents.board_orchestrator: Created bug item REQ-004 for failed item REQ-002
+2026-05-10 05:20:47,936 INFO coagents.multi_scheduler: [AI-Agent] Completed: REQ-002 (1 tasks)
+2026-05-10 05:20:47,943 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-002
+2026-05-10 05:23:59,684 INFO coagents.token_tracker: [token] REQ-038-decompose/execute: 4994 in + 1480 out = 6474 tokens ($0.0372)
+2026-05-10 05:24:00,129 INFO coagents.board_orchestrator: _persist_tasks_to_plan: added 8 task(s) to plan.yaml: ['REQ-038-task-1', 'REQ-038-task-2', 'REQ-038-task-3', 'REQ-038-task-4', 'REQ-038-task-5', 'REQ-038-task-6', 'REQ-038-task-7', 'REQ-038-task-8']
+2026-05-10 05:24:00,129 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-038 (planning→active): ['REQ-038-task-1', 'REQ-038-task-2', 'REQ-038-task-3', 'REQ-038-task-4', 'REQ-038-task-5', 'REQ-038-task-6', 'REQ-038-task-7', 'REQ-038-task-8']
+2026-05-10 05:24:00,480 INFO coagents.board_orchestrator: [task_ids] Verified: REQ-038.task_ids correctly persisted as ['REQ-038-task-1', 'REQ-038-task-2', 'REQ-038-task-3', 'REQ-038-task-4', 'REQ-038-task-5', 'REQ-038-task-6', 'REQ-038-task-7', 'REQ-038-task-8']
+2026-05-10 05:24:00,480 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-038 into 8 tasks — stored task_ids=['REQ-038-task-1', 'REQ-038-task-2', 'REQ-038-task-3', 'REQ-038-task-4', 'REQ-038-task-5', 'REQ-038-task-6', 'REQ-038-task-7', 'REQ-038-task-8']
+2026-05-10 05:25:23,854 INFO coagents.board_scheduler: Stale execution for REQ-001 (started 2026-05-10 04:46:01.177874, past timeout) — allowing re-fire
+2026-05-10 05:25:23,857 INFO coagents.board_scheduler: Fired 1 items: ['REQ-001']
+2026-05-10 05:25:23,869 INFO coagents.board_scheduler: Firing REQ-001: RAG增强对话：检索相关文档块后再调用LLM (cron: )
+2026-05-10 05:25:23,886 INFO coagents.multi_scheduler: [AI-Agent] Processing: REQ-001 — RAG增强对话：检索相关文档块后再调用LLM
+2026-05-10 05:25:24,132 WARNING coagents.board_orchestrator: Decomposition failed for REQ-001: Timed out after 300s
+2026-05-10 05:25:24,199 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-001 (already active): ['REQ-001-task-1']
+2026-05-10 05:25:24,247 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-001 into 1 tasks — stored task_ids=['REQ-001-task-1']
+2026-05-10 05:25:36,865 INFO coagents.token_tracker: [token] REQ-038-task-1/execute: 16698 in + 3639 out = 20337 tokens ($0.1047)
+2026-05-10 05:25:36,865 INFO coagents.board_orchestrator: Task REQ-038-task-1 succeeded: Everything loads cleanly. Here's a summary of every change made:
+
+---
+
+### Changes
+
+#### `src/coagents/pm_agent.py`
+Added **`REQCandidate`** Pydantic model (before `FailedTaskEntry`) with all eight re
+2026-05-10 05:30:23,992 WARNING coagents.board_orchestrator: Decomposition failed for REQ-001: Timed out after 300s
+2026-05-10 05:30:24,044 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-001 (already active): ['REQ-001-task-1']
+2026-05-10 05:30:24,067 INFO coagents.board_orchestrator: [task_ids] Decomposed REQ-001 into 1 tasks — stored task_ids=['REQ-001-task-1']
+2026-05-10 05:30:55,332 INFO coagents.token_tracker: [token] REQ-001-task-1/execute: 24922 in + 8914 out = 33836 tokens ($0.2085)
+2026-05-10 05:30:55,333 INFO coagents.board_orchestrator: Task REQ-001-task-1 succeeded: 16 new backlog items have been successfully added to `board.yaml`. Here's a summary of what was analyzed and created:
+
+---
+
+## Analysis Summary
+
+**CoAgents** is an agent-agnostic project governance en
+2026-05-10 05:30:55,341 INFO coagents.board_orchestrator: Running quality gates for REQ-001: ['python_import', 'pytest']
+2026-05-10 05:30:56,509 INFO coagents.board_orchestrator: All quality gates passed for REQ-001
+2026-05-10 05:30:56,509 INFO coagents.board_orchestrator: Running review for REQ-001
+2026-05-10 05:30:57,927 WARNING coagents.board_orchestrator: Review adapter failed for REQ-001, skipping review
+2026-05-10 05:30:57,928 INFO coagents.board_orchestrator: [task_ids] Writing task_ids to BoardItem REQ-001 (→completed): ['REQ-001-task-1']
+2026-05-10 05:30:57,933 INFO coagents.board_orchestrator: Board item REQ-001 completed successfully
+2026-05-10 05:30:57,934 INFO coagents.multi_scheduler: [OnCall-Agent] Completed: REQ-001 (1 tasks)
+2026-05-10 05:30:57,937 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-001
+2026-05-10 05:33:03,488 INFO coagents.token_tracker: [token] REQ-038-task-2/execute: 22771 in + 6888 out = 29659 tokens ($0.1716)
+2026-05-10 05:33:03,489 INFO coagents.board_orchestrator: Task REQ-038-task-2 succeeded: The function works end-to-end. Here's a summary of what was implemented:
+
+---
+
+## What was added to `pm_agent.py`
+
+### `async def brainstorm(project_dir) -> list[REQCandidate]`
+
+Located at the bottom 
+2026-05-10 05:38:34,861 INFO coagents.token_tracker: [token] REQ-038-task-3/execute: 19241 in + 5808 out = 25049 tokens ($0.1448)
+2026-05-10 05:38:34,862 INFO coagents.board_orchestrator: Task REQ-038-task-3 succeeded: Here's a summary of everything that was implemented:
+
+---
+
+## Changes made to `pm_agent.py`
+
+### 1. Two new score fields on `REQCandidate`
+```python
+impact_score: int = 0   # 1 (low) … 5 (high), assig
+2026-05-10 05:42:42,301 INFO coagents.token_tracker: [token] REQ-001-task-1/execute: 62151 in + 21747 out = 83898 tokens ($0.5127)
+2026-05-10 05:42:42,302 INFO coagents.board_orchestrator: Task REQ-001-task-1 succeeded: T3.2 is fully implemented. Here's a summary of every file created/modified:
+
+---
+
+## T3.2 — RAG-Enhanced Chat: What Was Built
+
+### New Files
+
+#### `src/coagents/rag_store.py`
+SQLite FTS5 knowledge-bas
+2026-05-10 05:42:42,302 INFO coagents.board_orchestrator: Running quality gates for REQ-001: ['backend_import', 'frontend_build']
+2026-05-10 05:42:54,357 WARNING coagents.board_orchestrator: Quality gates failed for REQ-001: ['backend_import']
+2026-05-10 05:42:54,403 INFO coagents.board_orchestrator: Board item REQ-001 moved to hold due to 1 failed task(s)
+2026-05-10 05:42:54,404 INFO coagents.board_orchestrator: Created bug item REQ-004 for failed item REQ-001
+2026-05-10 05:42:54,404 INFO coagents.multi_scheduler: [AI-Agent] Completed: REQ-001 (1 tasks)
+2026-05-10 05:42:54,437 INFO coagents.board_scheduler: Scheduler finally: cleared execution_started_at for REQ-001
+2026-05-10 05:43:17,975 INFO coagents.token_tracker: [token] REQ-038-task-4/execute: 29360 in + 6478 out = 35838 tokens ($0.1853)
+2026-05-10 05:43:17,976 INFO coagents.board_orchestrator: Task REQ-038-task-4 succeeded: All 12 tests pass. Here's a summary of everything done:
+
+---
+
+## What was implemented
+
+### `pm_agent.py` — three additions
+
+**`_load_governance(project_dir)`** — loads `governance.yaml` and returns it

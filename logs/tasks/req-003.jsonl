@@ -1,0 +1,5 @@
+{"t": 1778389436.4225826, "l": "[quality] Running gates: ['backend_import', 'frontend_build']"}
+{"t": 1778389446.3952987, "l": "[quality] backend_import: \u274c fail"}
+{"t": 1778389446.3955219, "l": "[quality] backend_import output: /bin/sh: 1: source: not found\n"}
+{"t": 1778389446.3956118, "l": "[quality] frontend_build: \u2705 pass"}
+{"t": 1778389446.395909, "l": "[quality] FAILED gates: ['backend_import']"}

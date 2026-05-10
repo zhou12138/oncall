@@ -1,0 +1,25 @@
+name: OnCall-Agent
+description: HTTP trigger → 3-step orchestration → MCP (ADX Kusto + GitHub + Teams)
+milestones:
+- id: M1-init
+  title: Initial Setup
+  description: Project onboarded to CoAgents
+  task_ids:
+  - T1.1
+tasks:
+- id: T1.1
+  title: Project onboarding — analyze codebase and create initial board items
+  role: developer
+  milestone: M1-init
+  timeout_minutes: 240
+- id: REQ-001-task-1
+  title: Analyze OnCall-Agent codebase and create development backlog
+  description: Analyze the Python project, understand architecture, identify improvements
+    and create board items.
+  item_type: task
+  role: developer
+  depends_on: []
+  milestone: ''
+  quality_gates: []
+  timeout_minutes: 60
+  artifacts: []

@@ -1,0 +1,8 @@
+{"t": 1778387692.358326, "l": "[start] starting task '\u52a0\u5f3a\u8d85\u65f6\u4e0e\u8d44\u6e90\u9650\u5236\u673a\u5236' (role=developer)"}
+{"t": 1778387692.3584535, "l": "[adapter] dispatching to ClaudeCodeAdapter"}
+{"t": 1778387885.3402336, "l": "[state] \u2192 done"}
+{"t": 1778387885.3404112, "l": "[output] \u6240\u6709\u9a8c\u8bc1\u901a\u8fc7\uff0c\u7ed3\u679c\u5b8c\u5168\u7b26\u5408\u9884\u671f\u3002\u4e0b\u9762\u662f\u53d8\u66f4\u6458\u8981\uff1a\n\n---\n\n## \u53d8\u66f4\u8bf4\u660e\n\n### `sandbox.js`\n\n#### 1. \u5dee\u5f02\u5316\u8d85\u65f6\u914d\u7f6e\uff08`DEFAULT_CONFIG` \u65b0\u589e\u5b57\u6bb5\uff09\n\n| \u5b57\u6bb5 | \u8bf4\u660e |\n|------|------|\n| `maxTimeoutMs` | \u4fdd\u7559\uff0c\u4f5c\u4e3a**\u515c\u5e95\u8d85\u65f6**\uff08\u672a\u5339\u914d\u4efb\u4f55\u6863\u4f4d\u65f6\u4f7f\u7528\uff09\uff0c\u9ed8\u8ba4 120 \u79d2 |\n| `timeoutProfiles"}
+{"t": 1778389223.10281, "l": "[start] starting task '\u4e3a\u6c99\u7bb1\u6a21\u5757\u7f16\u5199\u5355\u5143\u6d4b\u8bd5' (role=developer)"}
+{"t": 1778389223.1032803, "l": "[adapter] dispatching to ClaudeCodeAdapter"}
+{"t": 1778389436.421646, "l": "[state] \u2192 done"}
+{"t": 1778389436.4218593, "l": "[output] \u5168\u90e8 **80 \u4e2a\u6d4b\u8bd5\uff0c\u5168\u90e8\u901a\u8fc7** \u2705\uff0c\u8017\u65f6 3.95 \u79d2\u3002\n\n---\n\n## \u6d4b\u8bd5\u6587\u4ef6\u6982\u89c8 \u2014 `tests/test_sandbox.py`\n\n\u6587\u4ef6\u5171 **80 \u6761\u6d4b\u8bd5**\uff0c\u6309 8 \u4e2a\u6d4b\u8bd5\u7c7b\u7ec4\u7ec7\uff0c\u8986\u76d6\u6c99\u7bb1\u6a21\u5757\u7684\u6240\u6709\u5173\u952e\u8def\u5f84\uff1a\n\n| \u6d4b\u8bd5\u7c7b | \u7528\u4f8b\u6570 | \u8986\u76d6\u5185\u5bb9 |\n|---|---|---|\n| `TestSandboxResult` | 8 | \u6570\u636e\u7c7b\u5c5e\u6027\uff1a`.ok`\u3001`.output"}

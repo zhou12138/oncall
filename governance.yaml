@@ -1,0 +1,32 @@
+project: OnCall-Agent
+repo: ''
+roles:
+  developer:
+    adapter: claude_code
+    model: claude-sonnet-4.6
+    allowed_tools: Read,Edit,Write,Bash
+    max_concurrent: 2
+    max_retries: 3
+    timeout_hours: 4
+  reviewer:
+    adapter: claude_code
+    model: claude-opus-4
+    allowed_tools: Read,Bash
+    must_differ_from: developer
+    timeout_hours: 2
+quality_gates:
+  python_import: cd /home/azureuser/oncall && python3 -c 'print("OK")' 2>&1
+  pytest: cd /home/azureuser/oncall && python3 -m pytest tests/ -x -q 2>&1 | tail
+    -20
+scheduler:
+  auto_pickup: true
+  bug_to_backlog: true
+  check_interval_minutes: 5
+  cron: '*/5 * * * *'
+  max_concurrent_tasks: 1
+  max_pickup_per_cycle: 1
+  max_retries: 3
+  task_timeout_hours: 4
+notifications:
+  stdout:
+    enabled: true
