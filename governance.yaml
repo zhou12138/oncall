@@ -30,3 +30,6 @@ scheduler:
 notifications:
   stdout:
     enabled: true
+
+storage:
+  storage_backend: split_yaml

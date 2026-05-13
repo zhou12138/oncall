@@ -1,0 +1,34 @@
+id: REQ-002
+title: Harden MCP client for fault tolerance
+description: Complete Phase 1 (M1.4) hardening of the MCP client by fully implementing
+  connection pooling, exponential backoff, and retry mechanisms for unreliable external
+  tool calls.
+priority: critical
+status: proposed
+item_type: task
+labels: []
+task_ids: []
+task_states: {}
+task_times: {}
+decompose_status: null
+cron_expr: ''
+timeout_minutes: 30
+last_fired_at: null
+execution_started_at: null
+completed_at: null
+failure_reason: null
+error_detail: null
+agent_status: idle
+current_action: ''
+error_code: ''
+repair_hint: ''
+task_retry_counts: {}
+task_results: {}
+quality_gate_results: {}
+acceptance_check_results: {}
+acceptance_report: {}
+source: pm
+enabled: true
+metadata: {}
+created_at: '2026-05-13T06:10:53.076832'
+updated_at: '2026-05-13T06:10:53.076832'
