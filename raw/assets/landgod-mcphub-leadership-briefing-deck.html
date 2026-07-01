@@ -35,7 +35,7 @@
       <div class="quote" style="margin-top:48px;max-width:900px">AI 负责思考和决策，LandGod / MCPHub 负责连接、调度和执行。</div>
       <div class="logoMark">LG</div>
     </div>
-    <div class="footer"><span>LandGod / MCPHub</span><span>01 / 15</span></div>
+    <div class="footer"><span>LandGod / MCPHub</span><span>01 / 17</span></div>
   </section>
 
   <section class="slide light">
@@ -54,7 +54,7 @@
       </div>
       <div class="quote" style="margin-top:36px">问题不是模型不够聪明，而是 Agent 缺少连接真实业务环境的执行层。</div>
     </div>
-    <div class="footer"><span>Background</span><span>02 / 15</span></div>
+    <div class="footer"><span>Background</span><span>02 / 17</span></div>
   </section>
 
   <section class="slide light">
@@ -70,7 +70,7 @@
         <div class="card"><div class="icon">⚙️</div><h3>GPU / Dev 机器</h3><p>模型、编译、Docker、专用工具链依赖特定机器。</p></div>
       </div>
     </div>
-    <div class="footer"><span>Enterprise Reality</span><span>03 / 15</span></div>
+    <div class="footer"><span>Enterprise Reality</span><span>03 / 17</span></div>
   </section>
 
   <section class="slide bg-grid">
@@ -106,7 +106,7 @@
       </div>
       <p class="subtitle" style="font-size:20px;line-height:1.35;margin-top:16px;max-width:1060px">没有 LandGod 时，只能临时用 SSH、HTTP wrapper、Queue Runner 或自建 MCP Server 去“包一层”。</p>
     </div>
-    <div class="footer"><span>WorkIQ CLI Problem</span><span>04 / 15</span></div>
+    <div class="footer"><span>WorkIQ CLI Problem</span><span>04 / 17</span></div>
   </section>
 
   <section class="slide light">
@@ -123,7 +123,7 @@
       </div>
       <div class="quote" style="margin-top:18px;font-size:22px;line-height:1.38">LandGod / MCPHub 解决的不是某一种工具接入问题，而是企业执行能力被锁在机器、网络、文件、登录态和设备里的碎片化问题。</div>
     </div>
-    <div class="footer"><span>Fragmented Enterprise Capabilities</span><span>05 / 15</span></div>
+    <div class="footer"><span>Fragmented Enterprise Capabilities</span><span>05 / 17</span></div>
   </section>
 
   <section class="slide bg-grid">
@@ -147,12 +147,74 @@
       </div>
       <div class="quote" style="margin-top:22px;font-size:23px;line-height:1.38">LandGod / MCPHub 不是再做一个 Agent，而是让任意 Agent 获得安全使用企业电脑和业务系统的能力。</div>
     </div>
-    <div class="footer"><span>Enterprise Computer Agent</span><span>06 / 15</span></div>
+    <div class="footer"><span>Enterprise Computer Agent</span><span>06 / 17</span></div>
+  </section>
+
+  <section class="slide light">
+    <div class="content">
+      <div class="kicker">06 · Human Credential Handoff</div>
+      <h2 class="title sm">Agent 要登录业务系统，但凭证不能交给 AI</h2>
+      <div class="cards cols2" style="margin-top:38px">
+        <div class="card" style="border-color:rgba(251,113,133,.30)">
+          <div class="icon">⚠️</div>
+          <h3>不推荐：Agent 直接拿凭证</h3>
+          <ul>
+            <li>账号、密码、验证码、MFA token 进入云端或 LLM 上下文</li>
+            <li>UKey、证书、扫码确认等本来就不能搬走</li>
+            <li>安全团队无法接受，责任边界和审计都不清晰</li>
+          </ul>
+        </div>
+        <div class="card" style="border-color:rgba(52,211,153,.35)">
+          <div class="icon">✅</div>
+          <h3>推荐：人机协同登录</h3>
+          <ul>
+            <li>Worker 在本地机器打开浏览器或业务软件</li>
+            <li>终端用户手动输入密码、MFA、UKey PIN 或扫码确认</li>
+            <li>登录态留在 Worker 本地，Agent 只调用授权业务工具</li>
+          </ul>
+        </div>
+      </div>
+      <div class="diagram" style="margin-top:26px;height:178px">
+        <div class="dnode" style="left:55px;top:50px;width:180px;border-color:rgba(34,211,238,.55)">Cloud Agent<span>发起任务 / 不接触凭证</span></div>
+        <div class="line cyan" style="left:235px;top:92px;width:125px"></div>
+        <div class="dnode" style="left:370px;top:36px;width:210px;border-color:rgba(52,211,153,.65)">Gateway / MCPHub<span>路由 · 权限 · 审批 · 审计</span></div>
+        <div class="line green" style="left:580px;top:92px;width:115px"></div>
+        <div class="dnode" style="left:705px;top:18px;width:210px;border-color:rgba(245,158,11,.65)">Worker Browser<span>打开登录页 / 保留 session</span></div>
+        <div class="line dash" style="left:810px;top:96px;width:1px;height:62px;transform:rotate(90deg)"></div>
+        <div class="dnode" style="left:948px;top:36px;width:205px;border-color:rgba(167,139,250,.65)">Human User<span>输入密码 / MFA / UKey</span></div>
+      </div>
+      <div class="quote" style="margin-top:14px;font-size:22px;line-height:1.32">凭证不交给 AI，登录态不离开本机；Agent 登录后只在授权工具边界内继续执行业务任务。</div>
+    </div>
+    <div class="footer"><span>Human Credential Handoff</span><span>07 / 17</span></div>
+  </section>
+
+  <section class="slide light">
+    <div class="content">
+      <div class="kicker">07 · 可执行方案</div>
+      <h2 class="title sm">把“用户手动登录 + Agent 后续处理”做成标准状态机</h2>
+      <div class="flow" style="margin-top:34px;justify-content:center;gap:10px">
+        <div class="node" style="min-width:135px">prepare_login</div><div class="arrow">→</div>
+        <div class="node" style="min-width:145px">waiting_user</div><div class="arrow">→</div>
+        <div class="node" style="min-width:135px">verify_login</div><div class="arrow">→</div>
+        <div class="node" style="min-width:145px;border-color:#34d399">run_tool</div><div class="arrow">→</div>
+        <div class="node" style="min-width:130px">return_result</div>
+      </div>
+      <div class="cards cols3" style="margin-top:38px">
+        <div class="card"><div class="icon">1</div><h3>登录准备工具</h3><p><b>erp.prepare_login()</b><br>Gateway 选择 Worker，Worker 打开 ERP / 财务 / 门店系统登录页，返回 login_session_id。</p></div>
+        <div class="card"><div class="icon">2</div><h3>等待用户完成登录</h3><p><b>erp.wait_for_login()</b><br>用户输入密码、验证码、MFA、UKey；Worker 轮询 URL、selector、窗口标题或用户确认。</p></div>
+        <div class="card"><div class="icon">3</div><h3>授权业务工具执行</h3><p><b>erp.export_report()</b><br>登录成功后，Agent 只能调用白名单业务工具，返回结构化结果和 artifact。</p></div>
+      </div>
+      <div class="cards cols2" style="margin-top:22px">
+        <div class="card"><h3>必须记录</h3><p>任务发起人、Worker、目标系统、进入等待时间、登录成功检测方式、后续 tool call、artifact、审批记录。</p></div>
+        <div class="card"><h3>禁止记录</h3><p>密码、验证码、MFA token、UKey PIN、完整 cookie、敏感 token；登录阶段可暂停截图或做敏感区域遮罩。</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>Executable Login Flow</span><span>08 / 17</span></div>
   </section>
 
   <section class="slide bg-grid">
     <div class="content">
-      <div class="kicker">06 · 解决方案</div>
+      <div class="kicker">08 · 解决方案</div>
       <h2 class="title sm">LandGod / MCPHub 是 AI Agent 的分布式工具注册与调度平台</h2>
       <div class="diagram" style="margin-top:42px;height:380px">
         <div class="dnode" style="left:70px;top:138px;width:190px;border-color:rgba(34,211,238,.55)">Any Agent<span>Claude / Codex / Copilot</span></div>
@@ -170,12 +232,12 @@
       </div>
       <p class="subtitle" style="font-size:22px;margin-top:24px">工具、数据、权限留在原机器；Agent 通过 Gateway 安全调用。</p>
     </div>
-    <div class="footer"><span>Solution</span><span>07 / 15</span></div>
+    <div class="footer"><span>Solution</span><span>09 / 17</span></div>
   </section>
 
   <section class="slide light">
     <div class="content">
-      <div class="kicker">07 · 企业节点拓扑</div>
+      <div class="kicker">09 · 企业节点拓扑</div>
       <h2 class="title sm">哪里有不可搬走的能力，哪里就装 Worker</h2>
       <div class="cards cols3" style="margin-top:34px">
         <div class="card"><div class="metric green">ERP</div><h3>ERP 访问机器</h3><p>内网 Windows / Browser / UIA / 报表导出</p></div>
@@ -187,12 +249,12 @@
       </div>
       <div class="quote" style="margin-top:28px;font-size:24px">API-only 系统可直接做 MCP Server；非 API / 内网 / 登录态 / UKey / Office / GPU 等能力，在对应机器装 Worker。</div>
     </div>
-    <div class="footer"><span>Enterprise Topology</span><span>08 / 15</span></div>
+    <div class="footer"><span>Enterprise Topology</span><span>10 / 17</span></div>
   </section>
 
   <section class="slide light">
     <div class="content">
-      <div class="kicker">08 · 产品价值</div>
+      <div class="kicker">10 · 产品价值</div>
       <h2 class="title sm">从 AI 建议到 AI 执行</h2>
       <div class="cards cols3" style="margin-top:44px">
         <div class="card"><div class="icon">💼</div><h3>业务价值</h3><ul><li>不用等旧系统 API 改造</li><li>减少重复人工操作</li><li>让 AI 进入真实流程</li></ul></div>
@@ -203,12 +265,12 @@
         <div class="node">会回答</div><div class="arrow">→</div><div class="node">会规划</div><div class="arrow">→</div><div class="node" style="border-color:#34d399">能执行</div>
       </div>
     </div>
-    <div class="footer"><span>Value</span><span>09 / 15</span></div>
+    <div class="footer"><span>Value</span><span>11 / 17</span></div>
   </section>
 
   <section class="slide light">
     <div class="content">
-      <div class="kicker">09 · 典型场景一</div>
+      <div class="kicker">11 · 典型场景一</div>
       <h2 class="title sm">无 API ERP / 内网系统：不改系统，也能让 AI 进入流程</h2>
       <div class="cards cols2" style="margin-top:44px">
         <div class="card" style="border-color:rgba(251,113,133,.28)"><h3><span class="red">以前</span>：人工操作链路</h3><ul><li>员工登录内网 ERP</li><li>手动查询、导出 Excel</li><li>复制整理、汇总报表</li><li>发送给管理层</li></ul></div>
@@ -216,12 +278,12 @@
       </div>
       <div class="quote" style="margin-top:34px">价值：不改 ERP、不暴露内网、不搬账号密码，先跑通低风险业务闭环。</div>
     </div>
-    <div class="footer"><span>Use Case · ERP</span><span>10 / 15</span></div>
+    <div class="footer"><span>Use Case · ERP</span><span>12 / 17</span></div>
   </section>
 
   <section class="slide light">
     <div class="content">
-      <div class="kicker">10 · 典型场景二</div>
+      <div class="kicker">12 · 典型场景二</div>
       <h2 class="title sm">财务 UKey、Office 报表、多机器协同</h2>
       <div class="cards cols3" style="margin-top:44px">
         <div class="card"><div class="icon">🔐</div><h3>财务 UKey</h3><p>UKey 和证书留在财务机器；Agent 只调用授权下载/对账工具。</p><p style="margin-top:12px"><span class="pill">不暴露敏感权限</span></p></div>
@@ -229,12 +291,12 @@
         <div class="card"><div class="icon">🕸️</div><h3>经营报告</h3><p>ERP、财务、Office、GPU Worker 分别获取数据、分析和生成 PPT。</p><p style="margin-top:12px"><span class="pill">一个 Agent 多个手脚</span></p></div>
       </div>
     </div>
-    <div class="footer"><span>Use Cases</span><span>11 / 15</span></div>
+    <div class="footer"><span>Use Cases</span><span>13 / 17</span></div>
   </section>
 
   <section class="slide light">
     <div class="content">
-      <div class="kicker">11 · 差异化</div>
+      <div class="kicker">13 · 差异化</div>
       <h2 class="title sm">不是 MCP Server、不是远程桌面、不是传统 RPA</h2>
       <table style="margin-top:34px">
         <thead><tr><th>方案</th><th>解决什么</th><th>局限</th><th>LandGod / MCPHub 区别</th></tr></thead>
@@ -247,12 +309,12 @@
       </table>
       <div class="quote" style="margin-top:24px;font-size:24px">MCP Server 连接 API 化世界；LandGod / MCPHub 连接还没 API 化的真实企业世界。</div>
     </div>
-    <div class="footer"><span>Differentiation</span><span>12 / 15</span></div>
+    <div class="footer"><span>Differentiation</span><span>14 / 17</span></div>
   </section>
 
   <section class="slide bg-grid">
     <div class="content">
-      <div class="kicker">12 · 安全治理</div>
+      <div class="kicker">14 · 安全治理</div>
       <h2 class="title sm">不是给 AI 一台裸电脑，而是给 AI 一个受控执行边界</h2>
       <div class="cards cols4" style="margin-top:42px">
         <div class="card"><div class="icon">✅</div><h3>工具白名单</h3><p>Agent 只能调用授权工具，不直接远控整机。</p></div>
@@ -266,12 +328,12 @@
         <div class="item"><span class="check">✓</span><span>Gateway 统一鉴权、路由、审批、审计、追踪和熔断。</span></div>
       </div>
     </div>
-    <div class="footer"><span>Governance</span><span>13 / 15</span></div>
+    <div class="footer"><span>Governance</span><span>15 / 17</span></div>
   </section>
 
   <section class="slide light">
     <div class="content">
-      <div class="kicker">13 · 落地路线</div>
+      <div class="kicker">15 · 落地路线</div>
       <h2 class="title sm">从低风险 PoC 到企业 Agent 执行基础设施</h2>
       <div class="timeline">
         <div class="phase"><div class="num">Phase 1 · 2-4 周</div><h3>低风险 PoC</h3><ul><li>Office / PPT / Excel 自动化</li><li>内网只读报表导出</li><li>多机器巡检</li><li>证明执行闭环与审计能力</li></ul></div>
@@ -279,12 +341,12 @@
         <div class="phase"><div class="num">Phase 3 · 平台化</div><h3>执行基础设施</h3><ul><li>统一 Gateway 与 Worker Fleet</li><li>权限治理与 Trace/Eval</li><li>接入 SEA Wing 自进化闭环</li><li>成为企业 AI Agent 执行层</li></ul></div>
       </div>
     </div>
-    <div class="footer"><span>Roadmap</span><span>14 / 15</span></div>
+    <div class="footer"><span>Roadmap</span><span>16 / 17</span></div>
   </section>
 
   <section class="slide bg-grid">
     <div class="content">
-      <div class="kicker">14 · 结论与请求</div>
+      <div class="kicker">16 · 结论与请求</div>
       <h2 class="title sm">先让 AI 在一个真实流程中跑起来，再扩展成企业级执行网络</h2>
       <div class="ask">
         <div class="card"><h3>核心结论</h3><p style="font-size:20px;line-height:1.65">LandGod / MCPHub 不是远程控制工具，而是企业 AI Agent 的执行基础设施。它让 AI 在不重构旧系统、不搬走敏感权限的前提下，进入真实业务流程。</p></div>
@@ -292,7 +354,7 @@
       </div>
       <div class="quote" style="margin-top:36px">不用等 API 改造，让 AI 从“辅助回答”进入“真实执行”。</div>
     </div>
-    <div class="footer"><span>Ask</span><span>15 / 15</span></div>
+    <div class="footer"><span>Ask</span><span>17 / 17</span></div>
   </section>
 </div>
 </body>
